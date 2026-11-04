@@ -21,7 +21,7 @@ describe('getPreviewBlockGapClass', () => {
     ).toBeNull()
   })
 
-  it('runs consecutive Paragraphs together', () => {
+  it('adds nothing between two Paragraph blocks, which own their spacing', () => {
     expect(
       getPreviewBlockGapClass('blocks.paragraph', 'blocks.paragraph')
     ).toBeNull()
@@ -45,6 +45,24 @@ describe('getPreviewBlockGapClass', () => {
     expect(
       getPreviewBlockGapClass('blocks.faq', 'blocks.cta-buttons', SELF_SPACED)
     ).toBe('mt-(--block-pb)')
+  })
+
+  // Live, the Paragraph pads its bottom to the tight CTA gap; a wrapper gap
+  // on top of that would push the CTA a section away.
+  it('leaves the gap above a CtaLink to the Paragraph before it', () => {
+    expect(
+      getPreviewBlockGapClass('shared.cta-link', 'blocks.paragraph')
+    ).toBeNull()
+  })
+
+  it('separates a CtaLink from a Paragraph that is not self-spaced', () => {
+    expect(
+      getPreviewBlockGapClass(
+        'shared.cta-link',
+        'blocks.paragraph',
+        SELF_SPACED
+      )
+    ).toBe('mt-section')
   })
 
   it('takes the self-spaced padding off the gap after one', () => {
