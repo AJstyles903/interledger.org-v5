@@ -17,7 +17,7 @@ pnpm exec playwright install --with-deps
 
 ## Running tests
 
-The config starts (or reuses) the Astro dev server on **port 1103** (`pnpm run start`).
+The config starts (or reuses) the Astro dev server on **port 1103** (`astro dev --host 127.0.0.1`). The dev process is started with `CI=true` so Vite keeps running when stdin closes (otherwise a backgrounded `astro dev` exits).
 
 | Command                    | What it does                                     |
 | :------------------------- | :----------------------------------------------- |
@@ -88,7 +88,7 @@ test('blog index loads', async ({ page }) => {
 ### Conventions
 
 - Prefer role/label locators (`getByRole`) over brittle CSS when possible.
-- Internal page URLs end with `/` (site convention). The custom 404 lives at `/404` (no trailing slash).
-- Do not assert HTTP `404` for missing pages in local `astro dev`: missing foundation routes redirect to `/404` and often respond with **200** while showing the “Page not found” heading. Netlify applies a real 404 status via `public/_redirects`.
+- Internal page URLs end with `/` (site convention).
+- In `astro dev`, a missing page keeps the requested URL and renders the custom 404 content (the “Page not found” heading). The response is often HTTP 200, so assert that heading rather than a 404 status. Netlify applies a real 404 status via `public/_redirects`.
 - Keep application code (`src/`) out of E2E PRs unless the product behavior itself must change.
 - Run `pnpm run format` and `pnpm run lint` before opening a PR. Target branch: `staging`.

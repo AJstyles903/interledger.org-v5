@@ -1,4 +1,8 @@
 import type { Locator, Page } from '@playwright/test'
+import { dismissDevChrome } from '../utils/dismissDevChrome'
+
+/** Document title when the homepage title and the site name are the same. */
+export const HOME_DOCUMENT_TITLE = 'Interledger Foundation'
 
 /**
  * Page Object for the foundation homepage (`/`).
@@ -11,7 +15,10 @@ export class HomePage {
 
   constructor(page: Page) {
     this.page = page
-    this.heroHeading = page.locator('#home-hero-title')
+    this.heroHeading = page.getByRole('heading', {
+      level: 1,
+      name: /rewriting the rules that move money/i
+    })
     this.aboutUsLink = page.getByRole('link', { name: /about us/i })
   }
 
@@ -20,6 +27,7 @@ export class HomePage {
   }
 
   async navigateToAboutUs(): Promise<void> {
+    await dismissDevChrome(this.page)
     await this.aboutUsLink.click()
   }
 }

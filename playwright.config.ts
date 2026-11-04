@@ -1,6 +1,20 @@
 import { defineConfig, devices } from '@playwright/test'
 
-const BASE_URL = 'http://localhost:1103'
+const BASE_URL = 'http://127.0.0.1:1103'
+
+/**
+ * Vite closes the dev server when stdin ends, unless `CI` is exactly `"true"`.
+ * Playwright does not keep the webServer stdin open, so a backgrounded
+ * `astro dev` exits. The flag applies only to that child process.
+ */
+function devServerEnv(): Record<string, string> {
+  const env: Record<string, string> = {}
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined) env[key] = value
+  }
+  env.CI = 'true'
+  return env
+}
 
 /**
  * Playwright E2E config for the Astro site.
@@ -14,7 +28,7 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
-  reporter: 'html',
+  reporter: [['html', { open: 'never' }]],
 
   use: {
     baseURL: BASE_URL,
@@ -24,9 +38,12 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 
   webServer: {
-    command: 'pnpm run start',
+    // Bind IPv4 explicitly. On Windows, `astro dev` can listen on ::1 only,
+    // and Playwright's readiness check then never reaches it.
+    command: 'pnpm exec astro dev --host 127.0.0.1',
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
-    timeout: 120 * 1000
+    timeout: 180 * 1000,
+    env: devServerEnv()
   }
 })

@@ -1,12 +1,17 @@
 import { test, expect } from '@playwright/test'
-import { HomePage } from '../pages/HomePage'
+import { AboutPage } from '../pages/AboutPage'
+import { HOME_DOCUMENT_TITLE, HomePage } from '../pages/HomePage'
 import { NotFoundPage } from '../pages/NotFoundPage'
+import { NONEXISTENT_PATH } from '../utils/urls'
 
 test.describe('Interledger Foundation Baseline E2E Tests', () => {
   test('homepage loads successfully', async ({ page }) => {
     const home = new HomePage(page)
     await home.goto()
-    await expect(page).toHaveTitle(/Interledger Foundation/)
+    await expect(page).toHaveURL('/')
+    // Exact title. A regex would also match "Interledger Foundation | Page not found".
+    await expect(page).toHaveTitle(HOME_DOCUMENT_TITLE)
+    await expect(home.heroHeading).toBeVisible()
   })
 
   test('homepage displays main hero heading', async ({ page }) => {
@@ -17,16 +22,17 @@ test.describe('Interledger Foundation Baseline E2E Tests', () => {
 
   test('visitor can navigate from homepage to About Us', async ({ page }) => {
     const home = new HomePage(page)
+    const about = new AboutPage(page)
     await home.goto()
     await home.navigateToAboutUs()
     await expect(page).toHaveURL(/\/about-us\/$/)
-    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+    await expect(about.heading).toBeVisible()
   })
 
   test('nonexistent URL displays custom 404 page', async ({ page }) => {
     const notFound = new NotFoundPage(page)
     await notFound.gotoNonexistent()
-    // Soft 404: body is 404.astro (often after redirect to /404); status may be 200.
+    await expect(page).toHaveURL(new RegExp(`${NONEXISTENT_PATH}$`))
     await expect(notFound.heading).toBeVisible()
     await expect(notFound.returnHomeLink).toBeVisible()
   })

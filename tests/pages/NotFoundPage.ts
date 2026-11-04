@@ -4,9 +4,9 @@ import { NONEXISTENT_PATH } from '../utils/urls'
 /**
  * Page Object for the custom 404 experience (`src/pages/404.astro`).
  *
- * Locally (`astro dev` / `astro preview`), missing CMS routes often soft-404:
- * content redirects to `/404` (HTTP 200) rather than Netlify's forced `404!`
- * status from `public/_redirects`. Assert on visible copy, not status code.
+ * In `astro dev`, a missing URL stays on the requested path and renders this
+ * content (often HTTP 200). Netlify's `public/_redirects` is what forces a
+ * real 404 status. Assert the heading, not the status code.
  */
 export class NotFoundPage {
   readonly page: Page
