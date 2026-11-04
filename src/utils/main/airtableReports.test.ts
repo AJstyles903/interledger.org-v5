@@ -125,6 +125,56 @@ describe('toGrantReport', () => {
     ])
   })
 
+  it('gives an image with a blank description empty alt text', () => {
+    const parsed = expectParsed(
+      toGrantReport(
+        liveReport({
+          [F.image1.id]: [attachment()],
+          [F.imageDescription1.id]: '   '
+        })
+      )
+    )
+    expect(parsed.imageSources[0]?.alt).toBe('')
+  })
+
+  it('fails on an image description that is not text', () => {
+    for (const description of [42, { error: '#ERROR!' }]) {
+      const error = expectError(
+        toGrantReport(
+          liveReport({
+            [F.image1.id]: [attachment()],
+            [F.imageDescription1.id]: description
+          })
+        )
+      )
+      expect(error.message).toContain(
+        `"Public Image Description 1": expected text, got ${JSON.stringify(description)}`
+      )
+    }
+  })
+
+  it('lists a bad description with a bad image in the same slot', () => {
+    const error = expectError(
+      toGrantReport(
+        liveReport({
+          [F.image1.id]: [attachment({ type: 'image/heic' })],
+          [F.imageDescription1.id]: 42
+        })
+      )
+    )
+    expect(error.message).toContain('"Public Image 1": expected a file of type')
+    expect(error.message).toContain(
+      '"Public Image Description 1": expected text, got 42'
+    )
+  })
+
+  it('ignores the description of a slot with no image, which is never published', () => {
+    const parsed = expectParsed(
+      toGrantReport(liveReport({ [F.imageDescription2.id]: 42 }))
+    )
+    expect(parsed.imageSources).toEqual([])
+  })
+
   it('accepts every allowed image type', () => {
     for (const type of ALLOWED_IMAGE_TYPES) {
       expectParsed(
@@ -277,9 +327,18 @@ describe('toGrantReports', () => {
       liveReport({ [F.license.id]: undefined }, 'rec3')
     ])
     const error = expectError(result)
-    expect(error.message).toContain('2 grant report(s) cannot be published')
+    expect(error.message).toMatch(/^2 report\(s\) cannot be published:\n/)
     expect(error.message).toContain('(ID: rec1)')
     expect(error.message).toContain('(ID: rec3)')
+  })
+
+  it('counts a report with several problems once, listing each problem', () => {
+    const result = toGrantReports([
+      liveReport({ [F.summary.id]: undefined, [F.license.id]: undefined })
+    ])
+    const error = expectError(result)
+    expect(error.message).toMatch(/^1 report\(s\) cannot be published:\n/)
+    expect(error.message.match(/^ {2}- /gm)).toHaveLength(2)
   })
 
   it('sorts by project name, then report number, independent of input order', () => {

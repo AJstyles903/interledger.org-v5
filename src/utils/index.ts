@@ -25,6 +25,7 @@ export {
   type SocialIconName
 } from './shared/url'
 export { tryCatchAsync } from './shared/tryCatch'
+export { collectResults } from './shared/collectResults'
 export { foldSearchText } from './shared/foldSearchText'
 export { formatDocumentTitle } from './shared/documentTitle'
 export { twMerge } from './shared/twMerge'
@@ -214,20 +215,22 @@ export {
   findRenamedFields,
   isRawTableRecord,
   listUnrenderedViewFields,
-  resolveProjectLeaders,
   selectPublishedGranteeFields,
   toGranteeRecord,
-  warnOnMissingProjectNames,
+  toGranteeRecords,
   type GranteeFieldName
 } from './main/airtableRecords'
 export {
   ALLOWED_IMAGE_TYPES,
   MAX_SOURCE_IMAGE_BYTES,
   describeValue,
+  formatProblems,
   isRecordLike,
   isStringArray,
   nonBlankString,
-  readImageField
+  partitionRecordResults,
+  readImageField,
+  recordProblemsError
 } from './main/airtableFieldValues'
 export {
   LIVE_STATUS,

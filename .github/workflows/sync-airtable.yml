@@ -105,7 +105,7 @@ jobs:
           pnpm exec prettier --check "$GRANTEE_JSON" "$REPORTS_JSON" "$PROFILES_JSON"
 
           # Staged so that new image files count: git diff ignores untracked files.
-          # The folder exists only after the first report with an image.
+          # Each folder exists only after the first report image or logo.
           git add -A -- "$GRANTEE_JSON" "$REPORTS_JSON" "$PROFILES_JSON"
           for images in "$REPORT_IMAGES" "$PROFILE_IMAGES"; do
             if [ -d "$images" ] || git ls-files --error-unmatch "$images" >/dev/null 2>&1; then
@@ -146,7 +146,7 @@ jobs:
           # exactly one commit and can never develop a merge conflict.
           git checkout -B "$SYNC_BRANCH"
 
-          # The sync step staged the data files and report images only, so the commit
+          # The sync step staged the data files and synced images only, so the commit
           # carries exactly those. Nothing else is staged on a fresh runner.
           git commit -m 'chore(data): sync Airtable data'
 
@@ -187,14 +187,17 @@ jobs:
             cat <<'EOF'
           A record enters the directory when an editor sets **Published on Website** in the
           Airtable Projects table, and leaves when that flag is cleared. A record can also change
-          without entering or leaving — check the file diff for those.
+          without entering or leaving — check the file diff for those. The sync fails, and opens
+          no pull request, if a published record has no Project Name, holds a value of the wrong
+          type or a formula error, or links a Project Leader contact with no name.
 
           A grant report enters when its **Publication Status** in the Airtable Published Reports
           table is **Live**, and leaves when it changes. The sync fails, and opens no pull request,
-          if a Live report is missing a required field.
+          if a Live report is missing a required field or holds an invalid value.
 
-          Every grantee in the Airtable Grantees table has a profile. The sync fails if a grantee
-          has a bad slug, a duplicate slug, or a bad link or logo.
+          Every grantee in the Airtable Grantees table has a profile. The sync fails, and opens no
+          pull request, if a grantee is missing a required field, holds an invalid value (a bad
+          slug, link or logo, for example) or shares its slug with another, or if the table is empty.
 
           ## Related Issue
 
@@ -202,8 +205,9 @@ jobs:
 
           ## Manual Test
 
-          Reading the diff is the test. To see it rendered, check out this branch, run
-          `pnpm run start`, and open `/grant/grantee-directory`.
+          Reading the diff is the test. To see the directory rendered, check out this branch, run
+          `pnpm run start`, and open `/grant/grantee-directory`. Grant reports and grantee
+          profiles have no page yet, so their diff is the only view.
 
           Worth a skim for:
 
@@ -253,7 +257,7 @@ jobs:
             echo "Opened pull request: $PR_URL"
           fi
 
-          echo "Grantee data changed: $BEFORE_COUNT → $AFTER_COUNT records. $PR_URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "Airtable data changed: grantee records $BEFORE_COUNT → $AFTER_COUNT, grant reports $REPORTS_BEFORE_COUNT → $REPORTS_AFTER_COUNT, grantee profiles $PROFILES_BEFORE_COUNT → $PROFILES_AFTER_COUNT. $PR_URL" >> "$GITHUB_STEP_SUMMARY"
 
   notify-slack:
     runs-on: ubuntu-latest
