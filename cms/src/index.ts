@@ -1435,6 +1435,7 @@ async function configureFieldLabels(strapi: StrapiInstance) {
       // become ambiguous if this wrapper field used the same text.
       media: 'Media',
       videoUrl: 'Video URL',
+      videoTitle: 'Video title',
       content: 'Content',
       quote: 'Quote',
       quoteSource: 'Quote Attribution'
@@ -1593,6 +1594,8 @@ async function configureFieldLabels(strapi: StrapiInstance) {
         'Content-to-media width. 3:2 (default) is the current design: 60/40 with a 4:3 image. 2:1 wider content; 1:1 equal columns; 1:2 wider media.',
       videoUrl:
         'YouTube or Vimeo URL. When set, takes precedence over the image.',
+      videoTitle:
+        'Accessible name for the video player. Independent of the poster image alt, so a video with no poster still has a title.',
       quote:
         'Quote text. When set, renders as a blockquote instead of the Content field.',
       quoteSource: 'Attribution shown below the quote (e.g. "Jane Doe, CEO").',
@@ -2237,6 +2240,7 @@ async function configureLayouts(strapi: StrapiInstance) {
         { name: 'imageAlt', size: 6 },
         { name: 'videoUrl', size: 6 }
       ],
+      [{ name: 'videoTitle', size: 12 }],
       [{ name: 'media', size: 12 }],
       [{ name: 'content', size: 12 }],
       [

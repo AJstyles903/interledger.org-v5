@@ -1753,6 +1753,7 @@ export interface ApiSummitPageSummitPage extends Struct.CollectionTypeSchema {
         'blocks.split-layout',
         'blocks.profile-grid',
         'blocks.blockquote',
+        'blocks.callout-text',
         'blocks.cta-strip',
         'blocks.pdf-embed',
         'blocks.video-embed',
