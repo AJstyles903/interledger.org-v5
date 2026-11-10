@@ -1,5 +1,6 @@
 import type { CollectionEntry } from 'astro:content'
 import type { BlogThumbnail } from '@/types/blog'
+import { relatedArticlePathSlug } from '../../schemas/relatedArticlePathSlug'
 import type { Locale } from './locales'
 
 type FoundationBlogEntry = CollectionEntry<'foundation-blog'>
@@ -112,10 +113,11 @@ export function resolveRelatedPosts(
   // post, so also match on `localizes`. An own-slug match wins, so the result
   // does not depend on the order of `posts`.
   const findBySlug = (slug: string, locale: Locale) => {
+    const key = relatedArticlePathSlug(slug)
     const inLocale = posts.filter((post) => post.data.locale === locale)
     return (
-      inLocale.find((post) => post.data.pathSlug === slug) ??
-      inLocale.find((post) => post.data.localizes === slug)
+      inLocale.find((post) => post.data.pathSlug === key) ??
+      inLocale.find((post) => post.data.localizes === key)
     )
   }
 

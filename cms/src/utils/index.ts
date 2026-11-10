@@ -131,6 +131,7 @@ export {
   SerializerFieldError,
   type FieldError
 } from './contentValidation'
+export { relatedArticleSlugError } from './relatedArticleSlug'
 
 // Section-relative pathSlug uniqueness (cross-section content types)
 export {
@@ -407,6 +408,7 @@ export {
   slugVariants,
   toSlashedPath,
   toSlashedSlug,
+  isRelatedArticleSlug,
   mapOutsideMarkdownCode,
   slashInternalMarkdownLinks,
   stripUploadOrigin,
