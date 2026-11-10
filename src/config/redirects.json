@@ -141,6 +141,11 @@
       "status": 301
     },
     {
+      "source": "/hackathon/2026-timetable/",
+      "destination": "/hackathon/overview/",
+      "status": 301
+    },
+    {
       "source": "/hacktoberfest-0/",
       "destination": "/tech/hacktober/",
       "status": 301
