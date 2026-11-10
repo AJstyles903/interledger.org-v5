@@ -6,35 +6,19 @@
         {
           "label": "Descripción general",
           "href": "/es/hackathon/overview/"
-        },
-        {
-          "label": "Requisitos de participación",
-          "href": "/es/hackathon/participation/"
-        },
-        {
-          "label": "Preguntas frecuentes",
-          "href": "/es/hackathon/faq/"
         }
       ]
     },
     {
-      "label": "2026 Hackatón de Open Payments",
+      "label": "Sobre Hackatones de Open Payments ",
       "items": [
-        {
-          "label": "Información clave",
-          "href": "/es/hackathon/2026-hackathon-medellin/"
-        },
-        {
-          "label": "Entrega y evaluación",
-          "href": "/es/hackathon/submission-judging/"
-        },
         {
           "label": "Herramientas y Recursos",
           "href": "/es/hackathon/open-payments/"
         },
         {
-          "label": "Cronograma",
-          "href": "/es/hackathon/2026-timetable/"
+          "label": "Entrega y evaluación",
+          "href": "/es/hackathon/submission-judging/"
         },
         {
           "label": "Código de conducta",
@@ -43,6 +27,14 @@
         {
           "label": "Política de IA",
           "href": "/es/hackathon/ai-policy/"
+        },
+        {
+          "label": "Requisitos de participación",
+          "href": "/es/hackathon/participation/"
+        },
+        {
+          "label": "Preguntas frecuentes",
+          "href": "/es/hackathon/faq/"
         }
       ]
     }
