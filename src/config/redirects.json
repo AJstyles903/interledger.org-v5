@@ -131,6 +131,11 @@
       "note": "`/grant` is a route prefix with no page of its own, so without this the bare path 404s [INTORG-1218]."
     },
     {
+      "source": "/hackathon/2026-hackathon-medellin/",
+      "destination": "/hackathon/overview/",
+      "status": 301
+    },
+    {
       "source": "/hacktoberfest-0/",
       "destination": "/tech/hacktober/",
       "status": 301
