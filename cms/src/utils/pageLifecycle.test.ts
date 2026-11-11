@@ -1,11 +1,15 @@
+import fs from 'fs'
+import os from 'os'
 import path from 'path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  createPageLifecycle,
   defaultLang,
   generateMDX,
   isCodeSyncRequest,
   readLocaleFromUpdateEvent,
-  resolvePageFilepath
+  resolvePageFilepath,
+  resolveUpdateTarget
 } from '@/utils'
 
 const testConfig = {
@@ -346,5 +350,234 @@ describe('generateMDX — draft', () => {
     const result = await generateMDX(testConfig, { ...page, draft: null })
 
     expect(result).not.toContain('draft')
+  })
+})
+
+// Strapi 5.57 strips `documentId` from `data` before the DB update, so a
+// lifecycle event carries only `where: { id }` (INTORG-1422).
+describe('resolveUpdateTarget', () => {
+  const uid = 'api::foundation-page.foundation-page' as const
+
+  function stubRowLookup(
+    findOne: (args: { where: { id: unknown } }) => Promise<unknown>
+  ) {
+    const query = vi.fn(() => ({ findOne: vi.fn(findOne) }))
+    vi.stubGlobal('strapi', { db: { query } })
+    return query
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('uses the documentId the event names, without a lookup', async () => {
+    const query = stubRowLookup(async () => null)
+
+    const target = await resolveUpdateTarget(
+      { params: { documentId: 'doc-1', locale: 'es' } },
+      uid
+    )
+
+    expect(target).toEqual({ documentId: 'doc-1', locale: 'es' })
+    expect(query).not.toHaveBeenCalled()
+  })
+
+  it('reads documentId and locale off the row when only where.id is set', async () => {
+    stubRowLookup(async ({ where }) =>
+      where.id === 7 ? { documentId: 'doc-1', locale: 'es' } : null
+    )
+
+    const target = await resolveUpdateTarget(
+      { params: { where: { id: 7 }, data: {} } },
+      uid
+    )
+
+    expect(target).toEqual({ documentId: 'doc-1', locale: 'es' })
+  })
+
+  it('falls back to the default locale when the row has none', async () => {
+    stubRowLookup(async () => ({ documentId: 'doc-1', locale: null }))
+
+    const target = await resolveUpdateTarget(
+      { params: { where: { id: 7 } } },
+      uid
+    )
+
+    expect(target).toEqual({ documentId: 'doc-1', locale: defaultLang })
+  })
+
+  it('returns null when the row is gone', async () => {
+    stubRowLookup(async () => null)
+
+    expect(
+      await resolveUpdateTarget({ params: { where: { id: 7 } } }, uid)
+    ).toBeNull()
+  })
+
+  it('returns null when the event identifies no row at all', async () => {
+    const query = stubRowLookup(async () => null)
+
+    expect(await resolveUpdateTarget({ params: { data: {} } }, uid)).toBeNull()
+    expect(query).not.toHaveBeenCalled()
+  })
+
+  it('returns the lookup failure as an Error', async () => {
+    stubRowLookup(async () => {
+      throw new Error('db down')
+    })
+
+    const target = await resolveUpdateTarget(
+      { params: { where: { id: 7 } } },
+      uid
+    )
+
+    expect(target).toBeInstanceOf(Error)
+    expect((target as Error).message).toContain('db down')
+  })
+})
+
+describe('createPageLifecycle beforeUpdate', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  // Without the stashed slug, a rename leaves the old MDX file behind as a
+  // duplicate of the new one.
+  it('stashes the published slug when the event carries only where.id', async () => {
+    const findPublished = vi.fn(async () => ({ pathSlug: '/old-slug/' }))
+    vi.stubGlobal('strapi', {
+      requestContext: { get: () => ({ request: { headers: {} } }) },
+      db: {
+        query: () => ({
+          findOne: async () => ({ documentId: 'doc-1', locale: 'es' })
+        })
+      },
+      documents: () => ({ findOne: findPublished })
+    })
+    const lifecycle = createPageLifecycle(testConfig)
+    const event = {
+      params: { where: { id: 7 }, data: { pathSlug: '/new-slug/' } },
+      state: {} as { oldPathSlug?: string; locale?: string }
+    }
+
+    await lifecycle.beforeUpdate(event)
+
+    expect(findPublished).toHaveBeenCalledWith(
+      expect.objectContaining({ documentId: 'doc-1', locale: 'es' })
+    )
+    expect(event.state).toEqual({ oldPathSlug: '/old-slug/', locale: 'es' })
+  })
+})
+
+// Every locale's MDX file is named after the English slug, so a rename must
+// clean up by that rule, not by the renamed locale's own slug.
+describe('createPageLifecycle afterUpdate — slug rename cleanup', () => {
+  let repoRoot: string
+  let outputDir: string
+
+  function writeMdx(locale: string, name: string, localizes?: string): string {
+    const dir =
+      locale === defaultLang ? outputDir : path.join(outputDir, locale)
+    fs.mkdirSync(dir, { recursive: true })
+    const filepath = path.join(dir, `${name}.mdx`)
+    const frontmatter = localizes ? `localizes: '${localizes}'\n` : ''
+    fs.writeFileSync(filepath, `---\n${frontmatter}---\n`)
+    return filepath
+  }
+
+  function stubStrapi(publishedEnglish: Record<string, unknown> | null) {
+    vi.stubGlobal('strapi', {
+      requestContext: { get: () => ({ request: { headers: {} } }) },
+      documents: () => ({
+        findOne: async ({ locale }: { locale: string }) =>
+          locale === defaultLang ? publishedEnglish : null
+      })
+    })
+  }
+
+  async function renameTo(
+    locale: string,
+    oldPathSlug: string,
+    pathSlug: string
+  ) {
+    await createPageLifecycle(testConfig).afterUpdate({
+      result: { id: 1, documentId: 'doc-1', title: 'T', pathSlug, locale },
+      state: { oldPathSlug, locale }
+    })
+  }
+
+  beforeEach(() => {
+    repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'page-rename-'))
+    outputDir = path.join(repoRoot, testConfig.outputDir)
+    vi.stubEnv('STRAPI_GIT_SYNC_REPO_PATH', repoRoot)
+    vi.stubEnv('STRAPI_DISABLE_GIT_SYNC', 'true')
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+    fs.rmSync(repoRoot, { recursive: true, force: true })
+  })
+
+  it('removes every locale file on an English rename', async () => {
+    stubStrapi(null)
+    const en = writeMdx(defaultLang, 'innovation')
+    const es = writeMdx('es', 'innovation', '/innovation/')
+
+    await renameTo(defaultLang, '/innovation/', '/innovation-fund/')
+
+    expect(fs.existsSync(en)).toBe(false)
+    expect(fs.existsSync(es)).toBe(false)
+  })
+
+  // Page B exists only in es at /foo/, so its file is es/foo.mdx: the same
+  // name page A's translation would have. Renaming A must not delete it
+  // (Jonathan, #867).
+  it('keeps another page’s same-named file on an English rename', async () => {
+    stubStrapi(null)
+    const en = writeMdx(defaultLang, 'foo')
+    const otherPage = writeMdx('es', 'foo')
+
+    await renameTo(defaultLang, '/foo/', '/bar/')
+
+    expect(fs.existsSync(en)).toBe(false)
+    expect(fs.existsSync(otherPage)).toBe(true)
+  })
+
+  it('leaves files alone when a translation is renamed', async () => {
+    stubStrapi({
+      id: 1,
+      documentId: 'doc-1',
+      title: 'Innovation',
+      description: 'Innovation grants',
+      pathSlug: '/innovation/',
+      locale: defaultLang
+    })
+    const ownFile = writeMdx('es', 'innovation', '/innovation/')
+    // Another page's translation, named after that page's English slug.
+    const otherPage = writeMdx('es', 'innovacion', '/innovacion/')
+
+    await renameTo('es', '/innovacion/', '/innovacion-nueva/')
+
+    expect(fs.existsSync(ownFile)).toBe(true)
+    expect(fs.existsSync(otherPage)).toBe(true)
+  })
+
+  it('removes a translation file named by its own slug when there is no English page', async () => {
+    stubStrapi(null)
+    const es = writeMdx('es', 'innovacion')
+
+    await renameTo('es', '/innovacion/', '/innovacion-nueva/')
+
+    expect(fs.existsSync(es)).toBe(false)
+  })
+
+  it('keeps another page’s translation when an untranslated page is renamed', async () => {
+    stubStrapi(null)
+    const otherPage = writeMdx('es', 'innovacion', '/innovacion/')
+
+    await renameTo('es', '/innovacion/', '/innovacion-nueva/')
+
+    expect(fs.existsSync(otherPage)).toBe(true)
   })
 })

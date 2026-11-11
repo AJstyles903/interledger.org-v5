@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
   validateSectionScopedSlug,
+  validateSlugFreeInOtherCollection,
   validateUniqueSlug
 } from './sectionScopedSlug'
 
@@ -220,5 +221,142 @@ describe('validateUniqueSlug', () => {
 
     expect(error).toBeUndefined()
     expect(documents.findMany).not.toHaveBeenCalled()
+  })
+})
+
+describe('validateSlugFreeInOtherCollection', () => {
+  interface OtherRow {
+    documentId: string
+    pathSlug: string
+    locale: string
+  }
+
+  function createOtherDocuments(stored: OtherRow[] = []) {
+    const inLocale = (locale: unknown) =>
+      stored.filter((e) => e.locale === (locale ?? 'en'))
+    return {
+      findMany: vi.fn(async (options: Record<string, unknown>) => {
+        const filters = options.filters as { pathSlug: { $in: string[] } }
+        return inLocale(options.locale).filter((e) =>
+          filters.pathSlug.$in.includes(e.pathSlug)
+        )
+      }),
+      findOne: vi.fn(
+        async (options: Record<string, unknown>) =>
+          inLocale(options.locale).find(
+            (e) => e.documentId === options.documentId
+          ) ?? null
+      )
+    }
+  }
+
+  const aiPolicyEn = { documentId: 'g1', pathSlug: '/ai-policy/', locale: 'en' }
+
+  it('allows a slug the other collection does not hold', async () => {
+    const otherDocuments = createOtherDocuments([aiPolicyEn])
+
+    const error = await validateSlugFreeInOtherCollection({
+      otherDocuments,
+      otherLabel: 'Grant Page',
+      data: { pathSlug: '/our-grantmaking/' }
+    })
+
+    expect(error).toBeUndefined()
+  })
+
+  it.each([
+    ['bare', 'ai-policy'],
+    ['slashed', '/ai-policy/']
+  ])(
+    'rejects a slug the other collection holds in %s form',
+    async (_form, stored) => {
+      const otherDocuments = createOtherDocuments([
+        { ...aiPolicyEn, pathSlug: stored }
+      ])
+
+      const error = await validateSlugFreeInOtherCollection({
+        otherDocuments,
+        otherLabel: 'Grant Page',
+        data: { pathSlug: '/ai-policy/' }
+      })
+
+      expect(error?.message).toContain('already used by a Grant Page')
+      expect(error?.details).toEqual({
+        errors: [expect.objectContaining({ path: ['pathSlug'] })]
+      })
+    }
+  )
+
+  it('skips the lookup when the update leaves pathSlug alone', async () => {
+    const otherDocuments = createOtherDocuments([aiPolicyEn])
+
+    const error = await validateSlugFreeInOtherCollection({
+      otherDocuments,
+      otherLabel: 'Grant Page',
+      data: { title: 'AI Policy' }
+    })
+
+    expect(error).toBeUndefined()
+    expect(otherDocuments.findMany).not.toHaveBeenCalled()
+  })
+
+  it('rejects a slug the other collection holds in the same locale', async () => {
+    const otherDocuments = createOtherDocuments([
+      aiPolicyEn,
+      { documentId: 'g1', pathSlug: '/ai-policy/', locale: 'es' }
+    ])
+
+    const error = await validateSlugFreeInOtherCollection({
+      otherDocuments,
+      otherLabel: 'Grant Page',
+      data: { pathSlug: '/ai-policy/' },
+      locale: 'es'
+    })
+
+    expect(error?.message).toContain('already used by a Grant Page')
+  })
+
+  // An English page with no es version still gets /es/grant/<slug>/ from the
+  // site's fallback routes, so the slug is taken in es too (Copilot, #867).
+  it('rejects a slug an English page with no translation holds', async () => {
+    const otherDocuments = createOtherDocuments([aiPolicyEn])
+
+    const error = await validateSlugFreeInOtherCollection({
+      otherDocuments,
+      otherLabel: 'Grant Page',
+      data: { pathSlug: '/ai-policy/' },
+      locale: 'es'
+    })
+
+    expect(error?.message).toContain('English Grant Page with no es version')
+  })
+
+  it('allows an English slug whose page has a translation under another slug', async () => {
+    const otherDocuments = createOtherDocuments([
+      aiPolicyEn,
+      { documentId: 'g1', pathSlug: '/politica-ia/', locale: 'es' }
+    ])
+
+    const error = await validateSlugFreeInOtherCollection({
+      otherDocuments,
+      otherLabel: 'Grant Page',
+      data: { pathSlug: '/ai-policy/' },
+      locale: 'es'
+    })
+
+    expect(error).toBeUndefined()
+  })
+
+  it('does not look for fallback routes on an English write', async () => {
+    const otherDocuments = createOtherDocuments()
+
+    await validateSlugFreeInOtherCollection({
+      otherDocuments,
+      otherLabel: 'Grant Page',
+      data: { pathSlug: '/ai-policy/' }
+    })
+
+    expect(otherDocuments.findMany).toHaveBeenCalledTimes(1)
+    expect(otherDocuments.findOne).not.toHaveBeenCalled()
   })
 })
