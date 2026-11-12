@@ -70,7 +70,7 @@ page renders in is fixed by its layout:
 | ---------------------- | ------------ |
 | `FoundationPageLayout` | always light |
 | `HackathonPageLayout`  | always dark  |
-| `SummitPageLayout`     | always dark  |
+| `SummitPageLayout`     | always light |
 
 The foundation site is light only. Do not add a `dark` page theme to it, and do
 not add `dark:` utilities to a component that renders only on foundation pages
@@ -98,9 +98,9 @@ Runtime tokens in `base/variables.css`:
 | `--color-bg`      | (unset)          | neutral-150 |
 
 Prose (`components/prose/default.css`) reads `--color-heading` and
-`--color-prose` under `@variant dark`, so summit and hackathon pick up
-white headings and muted body copy without page-level colour overrides.
-`--color-text` stays white for chrome (e.g. microsite footer).
+`--color-prose` under `@variant dark`, so hackathon picks up white headings
+and muted body copy without page-level colour overrides. Summit uses the
+light foundation page, so it keeps the light prose colours.
 
 ## Pillar Theming System
 
@@ -474,15 +474,17 @@ Every page except the home page uses **one** gap between its top-level elements,
 | ----------------------- | ---------------------------------- | ------------------------------------------------------ |
 | `--space-section`       | 64px / 80px tablet / 120px desktop | Between two top-level elements: sections, prose blocks |
 | `--space-block-heading` | 48px                               | Between a heading and the content it titles            |
-| `--spacing-2xl`         | 32px                               | Between paragraphs (bare `p` or a `Paragraph` block)   |
+| `--spacing-2xl`         | 32px                               | Between bare paragraphs (markdown outside a block)     |
 
-`--space-section` is always the larger of the first pair, so a section break reads wider than a heading break. `Paragraph` is running text, not a section: consecutive Paragraphs use the 32px text rhythm from `prose/default.css`, same as adjacent `<p>` tags.
+`--space-section` is always the larger of the first pair, so a section break reads wider than a heading break. Bare markdown paragraphs use the 32px text rhythm from `prose/default.css`.
+
+**Blocks that own their spacing (ADR-009).** A block root with `data-intro-variant` renders an optional intro at its top and pads its bottom with `--block-pb`, so it sits out the rhythm below. A `Paragraph` block is one of them (`data-intro-variant="paragraph"`): inside it, `prose/paragraph-block.css` pads each heading, paragraph and media element by what is above it (ADR-009 A3–A5, tokens `--para-*` in `base/variables.css`). Every template uses it, blog posts and profiles included (D3). Pages mix these blocks with elements that don't own their spacing (plain Markdown, and blocks without the marker), so bridge rules in `prose/rhythm.css` and `utilities/spacing.css` (`page-stack`) keep the gap between the two kinds at `--space-section`.
 
 **A block never carries its own vertical margin.** The container decides:
 
 - `page-stack` on `<main>` spaces the page's sections. Sections carry `px-content` for the gutter and nothing else.
-- `prose/rhythm.css` spaces the children of `[data-prose]`, `[data-prose-blog]`, and `[data-prose-summit]`. It targets any child with a `data-component` attribute except `Paragraph` (text flow, 32px). That is why a block component must set that attribute on its **root** element.
-- `DynamicZone.astro` applies the same value in the Strapi preview, so a block sits in the same place there as on the live page. Consecutive `blocks.paragraph` items skip the section gap and keep the 32px paragraph rhythm.
+- `prose/rhythm.css` spaces the children of `[data-prose]`, `[data-prose-blog]`, and `[data-prose-summit]`. It targets any child with a `data-component` attribute, except blocks that own their spacing. That is why a block component must set that attribute on its **root** element.
+- `DynamicZone.astro` applies the same value in the Strapi preview, so a block sits in the same place there as on the live page. Blocks that own their spacing are listed in `SELF_SPACED_BLOCKS` (`utils/main/dynamicZoneSpacing.ts`).
 
 Single-side reads, for the edges of a stack: `mt-section`, `mb-section`, `pt-section`, `pb-section`, `gap-section`.
 
@@ -613,7 +615,7 @@ The site has **two separate CSS systems** that never coexist in the same browser
 
 ### `base/starlight-parity.css`
 
-Until Astro 6.4, the docs CSS also loaded on every main-site page, and some of its rules won over ours. Production looks the way it does partly because of that. Astro 6.4 and later load the docs CSS on docs routes only, so `starlight-parity.css` restates, on the main site only, the rules that won: font smoothing, the anchor scroll offset, the corner radius and shadow on tables and code blocks (with the darker shadow on dark pages), word breaks in table code, and the footnote styles. It uses the same cascade position the leaked rules had. The scroll offset is the exception: the leaked value was the docs nav (`5.775rem`), which is taller than the main-site header, so it uses `--site-header-height` instead. The other values are raw. Moving them to design tokens is a follow-up.
+Until Astro 6.4, the docs CSS also loaded on every main-site page, and some of its rules won over ours. Production looks the way it does partly because of that. Astro 6.4 and later load the docs CSS on docs routes only, so `starlight-parity.css` restates, on the main site only, the rules that won: font smoothing, the anchor scroll offset, the corner radius and shadow on tables and code blocks (with the darker shadow on dark pages), and word breaks in table code. Footnote and reference lists are styled in `components/prose/footnotes.css`. `starlight-parity.css` uses the same cascade position the leaked rules had. The scroll offset is the exception: the leaked value was the docs nav (`5.775rem`), which is taller than the main-site header, so it uses `--site-header-height` instead. The other values are raw. Moving them to design tokens is a follow-up.
 
 ### Rules to keep them isolated
 

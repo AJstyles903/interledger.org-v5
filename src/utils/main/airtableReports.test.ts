@@ -17,6 +17,7 @@ import {
 
 const CREATED = '2026-11-15T00:00:00.000Z'
 const F = REPORT_FIELDS
+const GRANT_ID = 'recUSF6jZiBVoqG01'
 
 // A Live report with every field set, as the API returns it (keyed by field ID).
 function liveReport(
@@ -42,6 +43,7 @@ function liveReport(
       [F.projectName.id]: ['Gib'],
       [F.reportType.id]: ['Interim Report'],
       [F.reportNumber.id]: [1],
+      [F.grantRecord.id]: [GRANT_ID],
       ...overrides
     }
   }
@@ -78,6 +80,7 @@ describe('toGrantReport', () => {
   it('maps a complete record to the report shape', () => {
     expect(expectParsed(toGrantReport(liveReport())).content).toEqual({
       id: 'rec1',
+      grantId: GRANT_ID,
       projectName: 'Gib',
       reportType: 'Interim Report',
       reportNumber: 1,
@@ -123,6 +126,56 @@ describe('toGrantReport', () => {
         alt: 'A chart'
       }
     ])
+  })
+
+  it('gives an image with a blank description empty alt text', () => {
+    const parsed = expectParsed(
+      toGrantReport(
+        liveReport({
+          [F.image1.id]: [attachment()],
+          [F.imageDescription1.id]: '   '
+        })
+      )
+    )
+    expect(parsed.imageSources[0]?.alt).toBe('')
+  })
+
+  it('fails on an image description that is not text', () => {
+    for (const description of [42, { error: '#ERROR!' }]) {
+      const error = expectError(
+        toGrantReport(
+          liveReport({
+            [F.image1.id]: [attachment()],
+            [F.imageDescription1.id]: description
+          })
+        )
+      )
+      expect(error.message).toContain(
+        `"Public Image Description 1": expected text, got ${JSON.stringify(description)}`
+      )
+    }
+  })
+
+  it('lists a bad description with a bad image in the same slot', () => {
+    const error = expectError(
+      toGrantReport(
+        liveReport({
+          [F.image1.id]: [attachment({ type: 'image/heic' })],
+          [F.imageDescription1.id]: 42
+        })
+      )
+    )
+    expect(error.message).toContain('"Public Image 1": expected a file of type')
+    expect(error.message).toContain(
+      '"Public Image Description 1": expected text, got 42'
+    )
+  })
+
+  it('ignores the description of a slot with no image, which is never published', () => {
+    const parsed = expectParsed(
+      toGrantReport(liveReport({ [F.imageDescription2.id]: 42 }))
+    )
+    expect(parsed.imageSources).toEqual([])
   })
 
   it('accepts every allowed image type', () => {
@@ -210,6 +263,24 @@ describe('toGrantReport', () => {
     )
   })
 
+  it('fails on a grant link that is not exactly one record ID', () => {
+    for (const value of [
+      [],
+      [GRANT_ID, GRANT_ID],
+      ['Gib 2022'],
+      GRANT_ID,
+      [[GRANT_ID]],
+      undefined
+    ]) {
+      const error = expectError(
+        toGrantReport(liveReport({ [F.grantRecord.id]: value }))
+      )
+      expect(error.message).toContain(
+        '"Grant Record": expected exactly one linked record'
+      )
+    }
+  })
+
   it('fails on a report number that is not a positive whole number', () => {
     for (const value of [0, 1.5, '1']) {
       expectError(toGrantReport(liveReport({ [F.reportNumber.id]: [value] })))
@@ -277,9 +348,18 @@ describe('toGrantReports', () => {
       liveReport({ [F.license.id]: undefined }, 'rec3')
     ])
     const error = expectError(result)
-    expect(error.message).toContain('2 grant report(s) cannot be published')
+    expect(error.message).toMatch(/^2 report\(s\) cannot be published:\n/)
     expect(error.message).toContain('(ID: rec1)')
     expect(error.message).toContain('(ID: rec3)')
+  })
+
+  it('counts a report with several problems once, listing each problem', () => {
+    const result = toGrantReports([
+      liveReport({ [F.summary.id]: undefined, [F.license.id]: undefined })
+    ])
+    const error = expectError(result)
+    expect(error.message).toMatch(/^1 report\(s\) cannot be published:\n/)
+    expect(error.message.match(/^ {2}- /gm)).toHaveLength(2)
   })
 
   it('sorts by project name, then report number, independent of input order', () => {
@@ -289,6 +369,23 @@ describe('toGrantReports', () => {
       liveReport({ [F.reportNumber.id]: [1] }, 'recA')
     ])
     expect(idsOf(result)).toEqual(['recA', 'recB', 'recZ'])
+  })
+
+  it('keeps the reports of two grants with the same name apart', () => {
+    const otherGrant = 'recUSF6jZiBVoqG00'
+    const result = toGrantReports([
+      liveReport({ [F.reportNumber.id]: [1] }, 'recA1'),
+      liveReport(
+        { [F.grantRecord.id]: [otherGrant], [F.reportNumber.id]: [2] },
+        'recB2'
+      ),
+      liveReport({ [F.reportNumber.id]: [2] }, 'recA2'),
+      liveReport(
+        { [F.grantRecord.id]: [otherGrant], [F.reportNumber.id]: [1] },
+        'recB1'
+      )
+    ])
+    expect(idsOf(result)).toEqual(['recB1', 'recB2', 'recA1', 'recA2'])
   })
 })
 

@@ -618,8 +618,9 @@ function evaluateStaticLiteral(
 }
 
 /**
- * Extract a prop whose value is a static JS literal expression — strings,
- * numbers, booleans, null, and arrays/objects nesting those.
+ * Extract a prop whose value is a static literal. A quoted attribute
+ * (`heading="Wednesday"`) is a string. An expression (`heading={"Wednesday"}`,
+ * `items={[...]}`) may be a string, number, boolean, null, array, or object.
  *
  * @example
  * ```ts
@@ -651,6 +652,10 @@ export function getStaticLiteralAttr(
     }
     return undefined
   }
+
+  // <Agenda heading="Wednesday, November 5" /> — a quoted attribute is a
+  // static string, the same value as heading={"Wednesday, November 5"}.
+  if (typeof attr.value === 'string') return attr.value
 
   if (
     !attr.value ||
@@ -747,29 +752,6 @@ export function getIntroAttr(
   }
 
   return Object.keys(intro).length > 0 ? intro : null
-}
-
-/**
- * The intro of a block that still accepts its legacy heading attribute
- * (`title=` or `heading=`, until Phase 4 of INTORG-1154). An `intro` prop
- * wins; without one, a non-blank legacy value becomes the intro heading.
- * Returns `null` when there is no intro; the handler then leaves the field
- * out, like any other empty optional field.
- *
- * @example
- * ```ts
- * // <NumberTiles title="Overview" tiles={…} />
- * getIntroWithLegacyHeading(node, 'title')  // → { heading: 'Overview' }
- * ```
- */
-export function getIntroWithLegacyHeading(
-  node: JsxBlockNode,
-  legacyAttr: string
-): SerializedBlockIntro | null {
-  const intro = getIntroAttr(node)
-  if (intro !== undefined) return intro
-  const legacyHeading = getStringAttr(node, legacyAttr)?.trim()
-  return legacyHeading ? { heading: legacyHeading } : null
 }
 
 // ---------------------------------------------------------------------------

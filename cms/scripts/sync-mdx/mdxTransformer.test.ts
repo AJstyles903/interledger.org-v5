@@ -1097,7 +1097,7 @@ describe('buildGrantPagePayload', () => {
         pathSlug: 'education/on-campus',
         frontmatter: baseGrantFrontmatter,
         content:
-          '<SplitLayout imageSrc="/img/foo.jpg" imagePosition="left" ctaText="Apply" ctaLink="https://example.com">\n\nSome body copy.\n\n</SplitLayout>'
+          '<SplitLayout imageSrc="/img/foo.jpg" imagePosition="left" buttons={[{"text":"Apply","link":"https://example.com"}]}>\n\nSome body copy.\n\n</SplitLayout>'
       })
 
       const payload = await buildGrantPagePayload(
@@ -2013,7 +2013,7 @@ describe('buildGrantOverviewPagePayload', () => {
         pathSlug: 'digital-finance',
         frontmatter: baseGrantOverviewFrontmatter,
         content:
-          '<SplitLayout imageSrc="/img/foo.jpg" imagePosition="left" ctaText="Apply" ctaLink="https://example.com">\n\nSome body copy.\n\n</SplitLayout>'
+          '<SplitLayout imageSrc="/img/foo.jpg" imagePosition="left" buttons={[{"text":"Apply","link":"https://example.com"}]}>\n\nSome body copy.\n\n</SplitLayout>'
       })
 
       const payload = await buildGrantOverviewPagePayload(
@@ -2673,6 +2673,41 @@ describe('buildPodcastPagePayload', () => {
     expect((payload as Record<string, unknown>).textSection).toBeNull()
   })
 
+  it('sends the title cards intro, and null when the MDX has none', async () => {
+    const withIntro = await buildPodcastPagePayload(
+      podcastPageFrontmatterSchema,
+      createMdxFile({
+        pathSlug: 'podcast',
+        frontmatter: {
+          ...basePodcastPageFrontmatter,
+          titleCards: {
+            ...basePodcastPageFrontmatter.titleCards,
+            intro: { heading: 'Explore our Featured Series' }
+          }
+        }
+      })
+    )
+    const without = await buildPodcastPagePayload(
+      podcastPageFrontmatterSchema,
+      createMdxFile({
+        pathSlug: 'podcast',
+        frontmatter: basePodcastPageFrontmatter
+      })
+    )
+
+    const introOf = (payload: unknown) =>
+      (
+        (payload as Record<string, unknown>).titleCards as Record<
+          string,
+          unknown
+        >
+      ).intro
+    expect(introOf(withIntro)).toEqual({
+      heading: 'Explore our Featured Series'
+    })
+    expect(introOf(without)).toBeNull()
+  })
+
   it('sends purple when the ctaStrip does not set a colour', async () => {
     const mdx = createMdxFile({
       pathSlug: 'podcast',
@@ -3323,7 +3358,7 @@ describe('buildBlogPayload', () => {
     date: '2026-06-10',
     locale: 'en',
     featureImage: baseFeatureImage,
-    relatedArticles: ['one', 'two', 'three']
+    relatedArticles: ['/blog/one/', '/blog/two/', '/blog/three/']
   }
   const blogFrontmatterWithoutFeatureImage: Record<string, unknown> = {
     ...baseBlogFrontmatter
@@ -3334,6 +3369,88 @@ describe('buildBlogPayload', () => {
   // resolves the base one.
   const createBlogUploadContext = (uploads: Record<string, number> = {}) =>
     createMockStrapiUploadContext({ [baseFeatureImage]: 1, ...uploads })
+
+  describe('relatedArticles', () => {
+    const payloadFor = (relatedArticles: string[]) =>
+      buildBlogPayload(
+        foundationBlogFrontmatterSchema,
+        createMdxFile({
+          pathSlug: 'test-post',
+          frontmatter: { ...baseBlogFrontmatter, relatedArticles }
+        }),
+        createBlogUploadContext().strapiUploadContext
+      )
+
+    it('stores the /blog/{slug}/ path, adding a missing trailing slash', async () => {
+      const payload = await payloadFor([
+        '/blog/one/',
+        '/blog/two',
+        '/blog/Interledger-Universe/'
+      ])
+
+      expect((payload as Record<string, unknown>).relatedArticles).toEqual([
+        { slug: '/blog/one/' },
+        { slug: '/blog/two/' },
+        { slug: '/blog/interledger-universe/' }
+      ])
+    })
+
+    // INTORG-1346: a bare slug or another section matches no post.
+    it('rejects a bare slug, a grant path, and a pasted URL', async () => {
+      const payload = await payloadFor([
+        '/grant/eoi-call-for-papers-reviewer/',
+        'two',
+        '/https://interledger.org/blog/taxes-on-digital-financial-services-in-africa/'
+      ])
+
+      expect(payload).toBeInstanceOf(Error)
+      expect((payload as Error).message).toBe(
+        [
+          'relatedArticles[0] "/grant/eoi-call-for-papers-reviewer/": should be a blog path, like /blog/my-post/.',
+          'relatedArticles[1] "two": should be a blog path, like /blog/two/.',
+          'relatedArticles[2] "/https://interledger.org/blog/taxes-on-digital-financial-services-in-africa/": should be a blog path, like /blog/taxes-on-digital-financial-services-in-africa/.'
+        ].join('; ')
+      )
+    })
+
+    it('rejects a one-segment grant slug', async () => {
+      const payload = await payloadFor([
+        '/eoi-call-for-papers-reviewer/',
+        '/grant-slug',
+        '/blog/one/'
+      ])
+
+      expect(payload).toBeInstanceOf(Error)
+      expect((payload as Error).message).toBe(
+        [
+          'relatedArticles[0] "/eoi-call-for-papers-reviewer/": should be a blog path, like /blog/eoi-call-for-papers-reviewer/.',
+          'relatedArticles[1] "/grant-slug": should be a blog path, like /blog/grant-slug/.'
+        ].join('; ')
+      )
+    })
+
+    // Same split as featureImage: the build skips the card, the sync rejects.
+    it('leaves a bad related slug parseable by the shared schema', () => {
+      const parsed = foundationBlogFrontmatterSchema.safeParse({
+        ...baseBlogFrontmatter,
+        pathSlug: 'test-post',
+        relatedArticles: [
+          '/grant/eoi-call-for-papers-reviewer/',
+          '/grant-slug',
+          '/blog/one/'
+        ]
+      })
+
+      expect(parsed.success).toBe(true)
+      if (parsed.success) {
+        expect(parsed.data.relatedArticles).toEqual([
+          'grant/eoi-call-for-papers-reviewer',
+          'grant-slug',
+          'one'
+        ])
+      }
+    })
+  })
 
   describe('featureMedia / thumbnailMedia', () => {
     it('resolves featureImage and featureImageAlt into featureMedia', async () => {

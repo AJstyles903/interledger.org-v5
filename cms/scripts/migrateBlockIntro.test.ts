@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  findLegacyBlockAttrs,
   migrateBlockIntro,
-  type BlockIntroMigration
+  type BlockIntroMigration,
+  type LegacyBlockAttr
 } from './migrateBlockIntro'
 
 function migrate(source: string, fold = false): BlockIntroMigration {
@@ -241,5 +243,92 @@ describe('migrateBlockIntro: fake intros', () => {
     const result = migrate(source, true)
     expect(result.skipped).toEqual([])
     expect(result.source).toBeNull()
+  })
+})
+
+describe('migrateBlockIntro: standalone carousel', () => {
+  it('migrates the heading of a carousel set to standalone={false}', () => {
+    const source =
+      '<LogoCarousel standalone={false} heading="Partners" logos={[]} />\n'
+    expect(migrate(source).source).toContain('intro={{"heading":"Partners"}}')
+    expect(legacyAttrs(source)).toEqual([
+      { line: 1, block: 'LogoCarousel', attr: 'heading' }
+    ])
+  })
+
+  it('keeps the heading of a standalone LogoCarousel', () => {
+    const source = '<LogoCarousel standalone heading="Partners" logos={[]} />\n'
+    expect(migrate(source).source).toBeNull()
+  })
+})
+
+function legacyAttrs(source: string): LegacyBlockAttr[] {
+  const result = findLegacyBlockAttrs(source)
+  if (result instanceof Error) throw result
+  return result
+}
+
+describe('findLegacyBlockAttrs', () => {
+  it('finds a legacy heading the migration would rewrite', () => {
+    expect(legacyAttrs('<Faq heading="About us" />\n')).toEqual([
+      { line: 1, block: 'Faq', attr: 'heading' }
+    ])
+  })
+
+  it('finds the cases the migration leaves alone', () => {
+    const source = [
+      '<Faq intro={{"heading":"A"}} heading="Old" />',
+      '',
+      '<CardGrid',
+      '  title={"Old"}',
+      '/>',
+      '',
+      '<SplitLayout ctaText="Go" />',
+      ''
+    ].join('\n')
+    expect(legacyAttrs(source)).toEqual([
+      { line: 1, block: 'Faq', attr: 'heading' },
+      { line: 4, block: 'CardGrid', attr: 'title' },
+      { line: 7, block: 'SplitLayout', attr: 'ctaText' }
+    ])
+  })
+
+  it('finds a block nested in another block', () => {
+    const source = '<Paragraph>\n\n<NumberTiles title="T" />\n\n</Paragraph>\n'
+    expect(legacyAttrs(source)).toEqual([
+      { line: 3, block: 'NumberTiles', attr: 'title' }
+    ])
+  })
+
+  it('finds a block written inline in a line of text', () => {
+    expect(legacyAttrs('See below <Faq heading="About" />\n')).toEqual([
+      { line: 1, block: 'Faq', attr: 'heading' }
+    ])
+  })
+
+  // The sync has no `standalone` field, so it rejects this heading too.
+  it('finds the heading of a standalone carousel', () => {
+    const source = '<LogoCarousel standalone heading="Partners" logos={[]} />\n'
+    expect(legacyAttrs(source)).toEqual([
+      { line: 1, block: 'LogoCarousel', attr: 'heading' }
+    ])
+  })
+
+  it('accepts intro and buttons', () => {
+    const source = [
+      '<Faq intro={{"heading":"A"}} />',
+      '',
+      '<SplitLayout buttons={[{"text":"Go","link":"/go/"}]} />',
+      ''
+    ].join('\n')
+    expect(legacyAttrs(source)).toEqual([])
+  })
+
+  it('ignores the same attribute names on other blocks', () => {
+    expect(legacyAttrs('<Agenda heading="Day 1" />\n')).toEqual([])
+  })
+
+  it('returns an Error for MDX that does not parse', () => {
+    expect(findLegacyBlockAttrs('<Faq heading="x"\n')).toBeInstanceOf(Error)
   })
 })

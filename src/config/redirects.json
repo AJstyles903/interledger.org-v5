@@ -36,6 +36,16 @@
       "status": 301
     },
     {
+      "source": "/es/hackathon/2026-hackathon-medellin/",
+      "destination": "/es/hackathon/overview/",
+      "status": 301
+    },
+    {
+      "source": "/es/hackathon/2026-timetable/",
+      "destination": "/es/hackathon/overview/",
+      "status": 301
+    },
+    {
       "source": "/es/tech/hacktoberfest/",
       "destination": "/es/tech/hacktober/",
       "status": 301
@@ -129,6 +139,16 @@
       "destination": "/grant/our-grantmaking/",
       "status": 301,
       "note": "`/grant` is a route prefix with no page of its own, so without this the bare path 404s [INTORG-1218]."
+    },
+    {
+      "source": "/hackathon/2026-hackathon-medellin/",
+      "destination": "/hackathon/overview/",
+      "status": 301
+    },
+    {
+      "source": "/hackathon/2026-timetable/",
+      "destination": "/hackathon/overview/",
+      "status": 301
     },
     {
       "source": "/hacktoberfest-0/",

@@ -17,6 +17,7 @@ import {
   validateFaqSections,
   validateSectionScopedSlug,
   validateUniqueSlug,
+  validateSlugFreeInOtherCollection,
   type SectionScopedSlugFinder,
   patchUidServiceForSlashedSlugs,
   type UidDocuments,
@@ -211,6 +212,49 @@ export function registerAsyncDocumentValidation(
     }
     return next()
   })
+}
+
+/** Content types that share the /grant/ URL tree: [uid, other uid, other label]. */
+const GRANT_SLUG_SIBLINGS = [
+  [
+    'api::grant-page.grant-page',
+    'api::grant-overview-page.grant-overview-page',
+    'Grant Overview Page'
+  ],
+  [
+    'api::grant-overview-page.grant-overview-page',
+    'api::grant-page.grant-page',
+    'Grant Page'
+  ]
+] as const
+
+/**
+ * Grant pages and grant overview pages share the /grant/ URL tree, so a slug
+ * must be free in the other collection too.
+ *
+ * Skipped for the MDX sync: the files in git are the source of truth there,
+ * and a commit that moves a slug from one collection to the other would be
+ * rejected halfway when the sync saves the new owner before the old one.
+ */
+export function registerGrantSlugSiblingValidation(
+  strapi: {
+    documents: ((uid: string) => unknown) & {
+      use: (middleware: DocumentValidationMiddleware) => void
+    }
+  },
+  isSyncRequest: () => boolean = isCodeSyncRequest
+) {
+  for (const [uid, otherUid, otherLabel] of GRANT_SLUG_SIBLINGS) {
+    registerAsyncDocumentValidation(strapi, uid, async ({ data, locale }) => {
+      if (isSyncRequest()) return undefined
+      return validateSlugFreeInOtherCollection({
+        otherDocuments: strapi.documents(otherUid) as SectionScopedSlugFinder,
+        otherLabel,
+        data,
+        locale
+      })
+    })
+  }
 }
 
 const REDIRECT_UID = 'api::redirect.redirect'
@@ -935,6 +979,7 @@ async function configureFieldLabels(strapi: StrapiInstance) {
       content: 'Page Content'
     },
     'api::fundraising-page.fundraising-page': {
+      draft: 'Draft',
       title: 'Page Title',
       pathSlug: 'Path Slug',
       description: 'Short Description',
@@ -1101,7 +1146,7 @@ async function configureFieldLabels(strapi: StrapiInstance) {
       description:
         'Short description used for SEO. Aim for 120–160 characters.',
       textSection:
-        'Optional paragraph shown below the hero, above the title cards. Only appears on the bare landing view — hidden on paginated or filtered views, same as the title cards.',
+        'Optional paragraph shown below the hero, above the title cards. Put the heading that titles the cards in Title Cards → Intro, not here. Only appears on the bare landing view — hidden on paginated or filtered views, same as the title cards.',
       titleCards:
         'List every featured podcast series shown at the top of the page.',
       podcasts:
@@ -1122,7 +1167,7 @@ async function configureFieldLabels(strapi: StrapiInstance) {
         'Optional mobile feature image. Dimensions: 358 x 240. Falls back to the desktop image when empty. Set alternative text on this media file when the mobile crop or content differs from desktop.',
       thumbnailMedia: 'Optional listing thumbnail. Dimensions: 240 x 140.',
       relatedArticles:
-        'Add exactly 3 related blog posts to display in the "You may also like" section. Enter each post’s path after /blog (e.g. /my-related-post/), not the full URL.'
+        'Add exactly 3 related blog posts to display in the "You may also like" section. Enter each post’s path as /blog/{slug}/ (e.g. /blog/my-related-post/). A bare slug, a path from another section, or a full URL is rejected.'
     },
     'api::faq.faq': {
       title:
@@ -1185,7 +1230,6 @@ async function configureFieldLabels(strapi: StrapiInstance) {
     },
     'blocks.profile-grid': {
       intro: 'Intro',
-      heading: 'Heading (deprecated)',
       category: 'Category',
       profiles: 'Profiles'
     },
@@ -1250,7 +1294,6 @@ async function configureFieldLabels(strapi: StrapiInstance) {
     },
     'blocks.card-grid': {
       intro: 'Intro',
-      title: 'Title (deprecated)',
       ariaLabel: 'Accessibility label',
       variant: 'Card variant',
       columns: 'Columns',
@@ -1303,7 +1346,6 @@ async function configureFieldLabels(strapi: StrapiInstance) {
     },
     'blocks.faq': {
       intro: 'Intro',
-      heading: 'Heading (deprecated)',
       items: 'Questions'
     },
     'blocks.faq-item': {
@@ -1324,7 +1366,6 @@ async function configureFieldLabels(strapi: StrapiInstance) {
     },
     'blocks.carousel': {
       intro: 'Intro',
-      heading: 'Section heading (deprecated)',
       logos: 'Logos',
       accessibilityLabel: 'Accessibility label'
     },
@@ -1334,7 +1375,6 @@ async function configureFieldLabels(strapi: StrapiInstance) {
     },
     'blocks.number-tiles': {
       intro: 'Intro',
-      title: 'Title (deprecated)',
       tiles: 'Tiles'
     },
     'blocks.number-tile': {
@@ -1344,7 +1384,8 @@ async function configureFieldLabels(strapi: StrapiInstance) {
       description: 'Description'
     },
     'blocks.agenda': {
-      heading: 'Heading (optional)',
+      intro: 'Intro',
+      heading: 'Day heading (optional)',
       items: 'Agenda items (minimum 2)'
     },
     'blocks.agenda-item': {
@@ -1354,7 +1395,6 @@ async function configureFieldLabels(strapi: StrapiInstance) {
     },
     'blocks.event-card': {
       intro: 'Intro',
-      title: 'Title (deprecated)',
       when: 'When',
       where: 'Where',
       apply: 'Apply'
@@ -1439,10 +1479,16 @@ async function configureFieldLabels(strapi: StrapiInstance) {
       // become ambiguous if this wrapper field used the same text.
       media: 'Media',
       videoUrl: 'Video URL',
+      videoTitle: 'Video title',
       content: 'Content',
       quote: 'Quote',
-      quoteSource: 'Quote Attribution',
-      cta: 'Call-to-action Button (deprecated)'
+      quoteSource: 'Quote Attribution'
+    },
+    'blocks.title-card-grid': {
+      intro: 'Intro',
+      titleCards: 'Title Cards',
+      columns: 'Columns',
+      ariaLabel: 'Accessible label'
     },
     'blocks.title-card': {
       heading: 'Heading',
@@ -1489,17 +1535,9 @@ async function configureFieldLabels(strapi: StrapiInstance) {
     }
   }
 
-  // Shared helper text for the block intro (ADR-009) and the legacy heading
-  // fields it replaces until they are removed (INTORG-1154, Phase 4).
+  // Shared helper text for the block intro (ADR-009).
   const BLOCK_INTRO_DESCRIPTION =
     'Optional heading (H2), subheading (H3) and description shown above the block. Leave empty for no intro.'
-  // Helper text for the legacy heading fields the block intro (ADR-009)
-  // replaces until they are removed (INTORG-1154, Phase 4). There is none for
-  // `intro` itself, or any other component field (the Split layout `buttons`
-  // and `cta`): Strapi shows a description for scalar fields only.
-  const LEGACY_HEADING_DESCRIPTION =
-    'Deprecated: use Intro → Heading instead. Only used when the intro is empty.'
-
   // Nothing adds /es/ to links on a Spanish page, so editors type it.
   const LINK_FIELD_DESCRIPTION =
     'For a page on this site, use its path, starting and ending with a slash (e.g. /about-us/). For another site, use a full URL (https://...). On the Spanish entry, add /es/ in front of a page path only (e.g. /es/about-us/). For a document, link its Spanish version if there is one.'
@@ -1524,10 +1562,9 @@ async function configureFieldLabels(strapi: StrapiInstance) {
       profileBio: 'We recommend a max of 255 characters'
     },
     'shared.related-article': {
-      slug: 'Add exactly 3. Enter the path of the related post after /blog, starting and ending with a slash, not the full URL (e.g. /my-related-post/). Missing slashes are added when you save. On a Spanish post, keep the English slug, without /es/.'
+      slug: 'Add exactly 3. Enter the blog post path, starting with /blog/ and ending with a slash (e.g. /blog/my-related-post/). A full URL, a path from another section (e.g. /grant/...), or a slug without /blog/ is rejected. A missing trailing slash is added when you save. On a Spanish post, use the English slug, without /es/.'
     },
     'blocks.profile-grid': {
-      heading: LEGACY_HEADING_DESCRIPTION,
       category: 'Option A: show profiles by category (leave profiles empty)',
       profiles: 'Option B: pick profiles manually (leave category empty)'
     },
@@ -1584,9 +1621,6 @@ async function configureFieldLabels(strapi: StrapiInstance) {
       heading:
         'Required. Also becomes the label in the FAQ page’s left-hand navigation, so keep it short. At least 1 question is required below.'
     },
-    'blocks.faq': {
-      heading: LEGACY_HEADING_DESCRIPTION
-    },
     'blocks.faq-item': {
       question: 'Required.',
       answer: 'Required.'
@@ -1604,6 +1638,8 @@ async function configureFieldLabels(strapi: StrapiInstance) {
         'Content-to-media width. 3:2 (default) is the current design: 60/40 with a 4:3 image. 2:1 wider content; 1:1 equal columns; 1:2 wider media.',
       videoUrl:
         'YouTube or Vimeo URL. When set, takes precedence over the image.',
+      videoTitle:
+        'Accessible name for the video player. Independent of the poster image alt, so a video with no poster still has a title.',
       quote:
         'Quote text. When set, renders as a blockquote instead of the Content field.',
       quoteSource: 'Attribution shown below the quote (e.g. "Jane Doe, CEO").',
@@ -1611,6 +1647,8 @@ async function configureFieldLabels(strapi: StrapiInstance) {
         'Rich text for the content column. Leave empty when using a Quote.'
     },
     'blocks.title-card-grid': {
+      intro:
+        'Optional heading, subheading and description above the cards. On the podcast page it titles the featured series.',
       ariaLabel:
         'Used by screen readers to describe this group of cards. This text is not visible on the page. Example: "Grant options" or "Ways to get involved".'
     },
@@ -1657,11 +1695,7 @@ async function configureFieldLabels(strapi: StrapiInstance) {
       ctaExternal: EXTERNAL_FLAG_DESCRIPTION,
       ctaDocument: DOCUMENT_FLAG_DESCRIPTION
     },
-    'blocks.number-tiles': {
-      title: LEGACY_HEADING_DESCRIPTION
-    },
     'blocks.card-grid': {
-      title: LEGACY_HEADING_DESCRIPTION,
       ariaLabel:
         'Used by screen readers to describe this group of cards. This text is not visible on the page.',
       // Clear any previously stored helper text for the variant custom field.
@@ -1679,7 +1713,6 @@ async function configureFieldLabels(strapi: StrapiInstance) {
       secondaryCta: 'Required link (internal, external, or document).'
     },
     'blocks.carousel': {
-      heading: LEGACY_HEADING_DESCRIPTION,
       accessibilityLabel:
         'Used by screen readers to describe this logo carousel. This text is not visible on the page. Example: "Partner logos" or "Our sponsors".',
       logos: 'Add one entry per logo. Recommended image size: 240×80.'
@@ -1700,7 +1733,6 @@ async function configureFieldLabels(strapi: StrapiInstance) {
       heading: 'Optional. E.g. "Day 1 – Nov 8, 2026".'
     },
     'blocks.event-card': {
-      title: LEGACY_HEADING_DESCRIPTION,
       when: 'This box is intended to explain when an event is taking place.',
       where: 'This box is intended to explain where an event is taking place.',
       apply:
@@ -2051,7 +2083,6 @@ async function configureLayouts(strapi: StrapiInstance) {
     'shared.related-article': [[{ name: 'slug', size: 8 }]],
     'blocks.profile-grid': [
       [{ name: 'intro', size: 12 }],
-      [{ name: 'heading', size: 12 }],
       [{ name: 'category', size: 12 }],
       [{ name: 'profiles', size: 12 }]
     ],
@@ -2065,7 +2096,6 @@ async function configureLayouts(strapi: StrapiInstance) {
     ],
     'blocks.carousel': [
       [{ name: 'intro', size: 12 }],
-      [{ name: 'heading', size: 12 }],
       [{ name: 'accessibilityLabel', size: 12 }],
       [{ name: 'logos', size: 12 }]
     ],
@@ -2075,12 +2105,10 @@ async function configureLayouts(strapi: StrapiInstance) {
     ],
     'blocks.faq': [
       [{ name: 'intro', size: 12 }],
-      [{ name: 'heading', size: 12 }],
       [{ name: 'items', size: 12 }]
     ],
     'blocks.number-tiles': [
       [{ name: 'intro', size: 12 }],
-      [{ name: 'title', size: 12 }],
       [{ name: 'tiles', size: 12 }]
     ],
     'blocks.number-tile': [
@@ -2092,6 +2120,7 @@ async function configureLayouts(strapi: StrapiInstance) {
       [{ name: 'description', size: 12 }]
     ],
     'blocks.agenda': [
+      [{ name: 'intro', size: 12 }],
       [{ name: 'heading', size: 12 }],
       [{ name: 'items', size: 12 }]
     ],
@@ -2104,7 +2133,6 @@ async function configureLayouts(strapi: StrapiInstance) {
     ],
     'blocks.event-card': [
       [{ name: 'intro', size: 12 }],
-      [{ name: 'title', size: 12 }],
       [{ name: 'when', size: 12 }],
       [{ name: 'where', size: 12 }],
       [{ name: 'apply', size: 12 }]
@@ -2256,14 +2284,22 @@ async function configureLayouts(strapi: StrapiInstance) {
         { name: 'imageAlt', size: 6 },
         { name: 'videoUrl', size: 6 }
       ],
+      [{ name: 'videoTitle', size: 12 }],
       [{ name: 'media', size: 12 }],
       [{ name: 'content', size: 12 }],
       [
         { name: 'quote', size: 8 },
         { name: 'quoteSource', size: 4 }
       ],
-      [{ name: 'buttons', size: 12 }],
-      [{ name: 'cta', size: 12 }]
+      [{ name: 'buttons', size: 12 }]
+    ],
+    'blocks.title-card-grid': [
+      [{ name: 'intro', size: 12 }],
+      [
+        { name: 'columns', size: 6 },
+        { name: 'ariaLabel', size: 6 }
+      ],
+      [{ name: 'titleCards', size: 12 }]
     ],
     'blocks.title-card': [
       [{ name: 'heading', size: 12 }],
@@ -2283,7 +2319,6 @@ async function configureLayouts(strapi: StrapiInstance) {
     'blocks.card-grid': [
       [{ name: 'variant', size: 12 }],
       [{ name: 'intro', size: 12 }],
-      [{ name: 'title', size: 12 }],
       [
         { name: 'columns', size: 6 },
         { name: 'ariaLabel', size: 6 }
@@ -2390,7 +2425,7 @@ export default {
    *
    * This gives you an opportunity to extend code.
    */
-  register(/* { strapi } */) {
+  register() {
     // Copy schema JSON files after TypeScript compilation
     copySchemas()
   },
@@ -2564,6 +2599,7 @@ export default {
         })
       )
     }
+    registerGrantSlugSiblingValidation(strapi)
     // The blog's uid pathSlug is stored as `/slug/`; make Generate and the
     // Available badge compare it by bare slug.
     const uidService = strapi.plugin('content-manager')?.service('uid') as

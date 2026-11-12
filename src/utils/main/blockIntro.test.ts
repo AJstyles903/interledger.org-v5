@@ -3,9 +3,7 @@ import type { BlockIntroData } from '../../types/blockIntro'
 import {
   blockIntroA11y,
   blockIntroLabel,
-  normalizeBlockIntro,
-  resolveBlockIntro,
-  splitTrailingHeading
+  normalizeBlockIntro
 } from './blockIntro'
 
 describe('normalizeBlockIntro', () => {
@@ -84,30 +82,6 @@ describe('normalizeBlockIntro', () => {
   })
 })
 
-describe('resolveBlockIntro', () => {
-  it('prefers an intro with content over the legacy heading', () => {
-    expect(resolveBlockIntro({ subheading: 'Sub' }, 'Old')).toEqual({
-      heading: null,
-      subheading: 'Sub',
-      description: null
-    })
-  })
-
-  it('falls back to the legacy heading', () => {
-    expect(resolveBlockIntro({ heading: ' ' }, ' Old ')).toEqual({
-      heading: 'Old',
-      subheading: null,
-      description: null
-    })
-    expect(resolveBlockIntro(undefined, 'Old')?.heading).toBe('Old')
-  })
-
-  it('returns null when neither has content', () => {
-    expect(resolveBlockIntro(null, '')).toBeNull()
-    expect(resolveBlockIntro(undefined, undefined)).toBeNull()
-  })
-})
-
 describe('blockIntroLabel', () => {
   it('uses the heading, then the subheading', () => {
     expect(
@@ -121,34 +95,6 @@ describe('blockIntroLabel', () => {
       blockIntroLabel(normalizeBlockIntro({ description: 'D' }))
     ).toBeNull()
     expect(blockIntroLabel(null)).toBeNull()
-  })
-})
-
-describe('splitTrailingHeading', () => {
-  it('splits a trailing h2 off the body', () => {
-    expect(
-      splitTrailingHeading('Intro text.\n\n\n\n## Explore our Series  \n')
-    ).toEqual({ body: 'Intro text.', heading: 'Explore our Series' })
-  })
-
-  it('drops closing hashes and handles a heading-only text', () => {
-    expect(splitTrailingHeading('## Series ##')).toEqual({
-      body: '',
-      heading: 'Series'
-    })
-  })
-
-  it('leaves markdown that does not end on an h2 alone', () => {
-    for (const markdown of [
-      'Text.\n\n## Heading\n\nMore.',
-      '### Small',
-      'Text'
-    ]) {
-      expect(splitTrailingHeading(markdown)).toEqual({
-        body: markdown,
-        heading: null
-      })
-    }
   })
 })
 

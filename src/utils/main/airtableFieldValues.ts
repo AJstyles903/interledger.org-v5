@@ -1,9 +1,9 @@
 import type { SyncedImageSource } from '@/types/airtable'
 
-// Value readers shared by the grant report and grantee profile parts of
-// scripts/import-airtable.ts. Each reader returns undefined, or a short
-// "expected ..." text, for a value it cannot use, so the caller can name the
-// Airtable field in its error.
+// Helpers shared by the three parts of scripts/import-airtable.ts: value
+// readers and error-message builders. A reader returns undefined, or an
+// "expected ..." description, for a value it cannot use, so the caller can
+// name the Airtable field in its error.
 
 // The file types the site accepts. Airtable does not limit them, so the sync
 // fails on any other type, for example HEIC from an iPhone or a PDF.
@@ -26,6 +26,13 @@ export function isRecordLike(value: unknown): value is Record<string, unknown> {
 
 export function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string')
+}
+
+const RECORD_ID_PATTERN = /^rec[A-Za-z0-9]{14}$/
+
+// An Airtable record ID, as a link or a lookup of a link returns it.
+export function isRecordId(value: unknown): value is string {
+  return typeof value === 'string' && RECORD_ID_PATTERN.test(value)
 }
 
 // Trimmed text, or undefined for a non-string or a blank one.
@@ -68,6 +75,32 @@ function readAttachment(
     }
   }
   return { attachmentId: file.id, url: file.url, sizeBytes: file.size, alt }
+}
+
+// One labelled block of an error message, a problem per line.
+export function formatProblems(label: string, problems: string[]): string {
+  return `${label}:\n${problems.map((problem) => `  - ${problem}`).join('\n')}`
+}
+
+// Splits per-record results into the values and each bad record's message, so
+// a part can fail once with every bad record listed.
+export function partitionRecordResults<T>(results: readonly (T | Error)[]): {
+  values: T[]
+  problems: string[]
+} {
+  const values: T[] = []
+  const problems: string[] = []
+  for (const result of results) {
+    if (result instanceof Error) problems.push(result.message)
+    else values.push(result)
+  }
+  return { values, problems }
+}
+
+// One error for a set that cannot be published. The label names what each
+// entry is, such as a bad record, which can itself list several problems.
+export function recordProblemsError(problems: string[], label: string): Error {
+  return new Error(`${problems.length} ${label}:\n${problems.join('\n')}`)
 }
 
 // An image field is optional, but it holds at most one file, of an allowed

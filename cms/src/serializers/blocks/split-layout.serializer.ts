@@ -9,14 +9,6 @@ import {
 import { escDouble as esc } from '../shared'
 import { serializeCtaButtonEntries } from './cta-buttons.serializer'
 
-interface SplitLayoutCta {
-  text?: string
-  link?: string
-  style?: string
-  external?: boolean
-  document?: boolean
-}
-
 type SplitLayoutType =
   'image-text' | 'image-quote' | 'video-text' | 'video-quote'
 
@@ -31,22 +23,6 @@ const SPLIT_LAYOUT_TYPES = [
 
 const DISPLAY_RATIOS = ['3:2', '2:1', '1:1', '1:2'] as const
 
-/** A legacy single CTA as a one-button group, or no buttons. */
-function legacyCtaButtons(
-  cta: SplitLayoutCta | null | undefined
-): CtaButtonEntry[] {
-  if (!cta?.text || !cta.link) return []
-  return [
-    {
-      text: cta.text,
-      link: cta.link,
-      style: cta.style ?? 'primary',
-      external: cta.external,
-      document: cta.document
-    }
-  ]
-}
-
 export function serialize(block: {
   intro?: BlockIntroInput | null
   buttons?: CtaButtonEntry[] | null
@@ -58,11 +34,10 @@ export function serialize(block: {
     alternativeText?: string | null
   } | null
   videoUrl?: string | null
+  videoTitle?: string | null
   content?: string | null
   quote?: string | null
   quoteSource?: string | null
-  /** @deprecated Legacy single CTA; exported as the button group. */
-  cta?: SplitLayoutCta | null
 }): string {
   const attrs: string[] = []
   const introAttr = serializeIntroProp(block.intro).trim()
@@ -116,6 +91,11 @@ export function serialize(block: {
     attrs.push(`videoUrl="${esc(block.videoUrl)}"`)
   }
 
+  const videoTitle = block.videoTitle?.trim()
+  if (isVideoLayout && videoTitle) {
+    attrs.push(`videoTitle="${esc(videoTitle)}"`)
+  }
+
   if (isQuoteLayout && block.quote) {
     attrs.push(`quote="${esc(block.quote)}"`)
   }
@@ -124,16 +104,7 @@ export function serialize(block: {
     attrs.push(`quoteSource="${esc(block.quoteSource)}"`)
   }
 
-  if (!block.buttons?.length && block.cta?.external && block.cta?.document) {
-    throw new Error(
-      'Split layout CTA cannot be both external and document. Pick one: ' +
-        'external opens a new tab, document downloads a file.'
-    )
-  }
-  // The button group; a legacy single CTA exports as a one-button group.
-  const buttons = block.buttons?.length
-    ? block.buttons
-    : legacyCtaButtons(block.cta)
+  const buttons = block.buttons ?? []
   if (isTextLayout && buttons.length > 0) {
     const entries = serializeCtaButtonEntries(buttons)
     attrs.push(`buttons={${JSON.stringify(entries)}}`)

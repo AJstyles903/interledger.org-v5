@@ -41,13 +41,20 @@ describe('getFooterOnlyColumn', () => {
     })
   })
 
-  it('falls back to the Foundation-only column for any other non-hackathon site', () => {
-    // SiteFooter only ever renders 'foundation' or 'hackathon' (summit uses
-    // MicrositeFooter instead), but the function itself branches on
-    // 'hackathon' alone, so any other NavigationSite takes this path too.
-    expect(getFooterOnlyColumn('summit', 'en')).toEqual(
-      getFooterOnlyColumn('foundation', 'en')
-    )
+  it('keeps terms and privacy on the summit footer, and not press or FAQ', () => {
+    expect(getFooterOnlyColumn('summit', 'en')).toEqual({
+      label: 'en:footer.resources',
+      items: [
+        {
+          label: 'en:footer.terms_service',
+          href: '/en/foundation-pages/terms-of-service'
+        },
+        {
+          label: 'en:footer.privacy_policy',
+          href: '/en/foundation-pages/privacy-policy'
+        }
+      ]
+    })
   })
 
   it('localizes hrefs and labels for a non-default locale', () => {

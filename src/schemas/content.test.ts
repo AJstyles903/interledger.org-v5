@@ -38,7 +38,7 @@ describe('foundationBlogFrontmatterSchema', () => {
       ...base,
       pathSlug: '/a-post/',
       localizes: '/the-original/',
-      relatedArticles: ['/one/', 'two', '/three']
+      relatedArticles: ['/blog/one/', '/two/', 'three']
     })
 
     expect(parsed.pathSlug).toBe('a-post')
@@ -167,6 +167,21 @@ describe('podcastPageFrontmatterSchema', () => {
   it('accepts a minimal valid page', () => {
     const result = podcastPageFrontmatterSchema.safeParse(podcastPageBase)
     expect(result.success).toBe(true)
+  })
+
+  it('accepts a title cards intro and rejects an unknown intro key', () => {
+    const withIntro = (intro: Record<string, string>) =>
+      podcastPageFrontmatterSchema.safeParse({
+        ...podcastPageBase,
+        titleCards: { ...podcastPageBase.titleCards, intro }
+      })
+
+    expect(withIntro({ heading: 'Explore our Featured Series' }).success).toBe(
+      true
+    )
+    expect(withIntro({ title: 'Explore our Featured Series' }).success).toBe(
+      false
+    )
   })
 
   it('rejects a page with no title cards', () => {

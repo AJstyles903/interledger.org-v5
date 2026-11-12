@@ -243,19 +243,13 @@ export interface SplitLayoutBlock extends StrapiBlockBase {
     alternativeText: string | null
   }
   videoUrl?: string
+  /** Accessible player name. Not the poster alt. */
+  videoTitle?: string
   content?: string
   quote?: string
   quoteSource?: string
-  /** The button group; a legacy `cta` is read into it. */
+  /** The button group. */
   buttons?: CtaButton[]
-  /** @deprecated Legacy single CTA, replaced by `buttons`. */
-  cta?: {
-    text: string
-    link: string
-    style?: string
-    external?: boolean
-    document?: boolean
-  }
 }
 
 /**
@@ -286,15 +280,18 @@ export interface NumberTilesBlock extends StrapiBlockBase {
   }[]
 }
 
-/** blocks.agenda — an optional heading followed by at least two scheduled items. */
+export interface AgendaItem {
+  time: string
+  activity: string
+  additionalInfo?: string
+}
+
+/** blocks.agenda — an optional intro and day heading, then at least two items. */
 export interface AgendaBlock extends StrapiBlockBase {
   __component: 'blocks.agenda'
+  intro?: SerializedBlockIntro
   heading?: string
-  items: {
-    time: string
-    activity: string
-    additionalInfo?: string
-  }[]
+  items: AgendaItem[]
 }
 
 /** shared.cta-link — standalone call-to-action link, usable directly in a dynamic zone. */

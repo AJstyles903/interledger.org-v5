@@ -375,9 +375,10 @@ publish gates, and a gated entry is excluded from the collection entirely:
 
 - `date` on blog posts: a post dated later than today is hidden.
 - `draft: true` on every page collection except the podcast page (blog, grant,
-  grant overview, report, FAQ, profile, summit, hackathon, foundation). Editors
-  set it with the **Draft** checkbox in Strapi. The CMS writes the key only
-  when it is checked, and the schema defaults a missing key to `false`.
+  grant overview, report, FAQ, profile, summit, hackathon, foundation,
+  fundraising). Editors set it with the **Draft** checkbox in Strapi. The CMS
+  writes the key only when it is checked, and the schema defaults a missing key
+  to `false`.
 
 Staging, playground, deploy previews and local dev show everything, so upcoming
 content and drafts stay reviewable.
@@ -473,6 +474,69 @@ content and drafts stay reviewable.
   and then `off` (or `CONTEXT=production` / `branch-deploy`). Check that the
   page's `dist/<path>/index.html`, its sitemap entry and any listing or profile
   grid that shows it appear only in the second build.
+
+## Airtable Sync
+
+`scripts/import-airtable.ts` runs daily in CI (`sync-airtable.yml`), and Slack
+is told only when it fails. Nobody reads the log of a run that passes.
+
+- **Fail, never warn, on bad data.** A missing required value or an invalid
+  value, required or optional, fails the whole sync, in the directory, the
+  grant reports and the grantee profiles alike. An empty optional cell is not
+  an error. Don't add a "warn and leave it out" path: the value then vanishes
+  from the site with nobody told. This was decided with the PM after two such
+  paths shipped (#766, and the one in #833). Beyond a non-blank Project Name
+  and a contact name for every Project Leader, directory values are checked by
+  type only, a decision of the same review: free text in Project Links is
+  allowed, and `grantee.ts` skips entries that are not URLs.
+- **One run lists every bad record.** Each record lists all of its problems,
+  each part lists all of its bad records, and `collectResults` joins the
+  three parts' failures into one error. A part still stops at its first
+  missing or hidden table, view or column, and checks images (and blank
+  directory columns) only once every record passes.
+- **The parts throw; the script catches each one.** An exception to "return
+  `T | Error`" (Errors as Values): the `fetch*` functions throw, and
+  `importAirtableData` wraps each part in `tryCatchAsync` so one failure
+  doesn't stop the others. Converting them is a separate task.
+- The site keeps the last good data until a run passes and its pull request is
+  merged: the JSON is written only after every part succeeds.
+
+## Block Intro and Spacing
+
+Every content block owns its heading area and its vertical spacing (ADR-009,
+`docs/decisions/009-block-intro-and-block-owned-spacing.md`).
+
+- **One intro per block.** A block's heading, subheading and description come
+  from its `intro` field (`shared.block-intro`), rendered by
+  `src/components/shared/BlockIntro.astro`. Don't add a per-block `title` or
+  `heading` field for the block's title, and don't render its own `<h2>` for
+  it. Normalize with `normalizeBlockIntro`, and name the `<section>` with
+  `blockIntroA11y`. Some headings are not a block intro and stay, for
+  example the CTA strip title (inside the strip, ADR D6), the Agenda day
+  heading, the InternalAdvert headline and the homepage's standalone
+  LogoCarousel. The grant InfoCards `heading` and GrantFaqSection
+  `title`/`subtitle` are their own fields, mapped into the intro.
+- **The marker.** A block that renders an intro sets `data-intro-variant` on
+  its root. It then owns its top (the intro, or the empty-intro spacer) and its
+  bottom (`--block-pb`), and sits out the prose rhythm. Every `Paragraph` sets
+  it too (`"paragraph"`). Spacing inside the block is padding, never margin,
+  so it never collapses. The tokens (`--intro-*`, `--block-pb`, `--para-*`,
+  `--media-pt`) live in `src/styles/base/variables.css`.
+- **The bridge stays.** Plain Markdown and the blocks without the marker
+  (such as CodeBlock, CalloutText, Timeline, DonationCards, CTA buttons
+  without an intro, or a Split layout in an older ratio without one) don't
+  own their spacing. The bridge rules in `prose/rhythm.css` and
+  `utilities/spacing.css` (`page-stack`) keep 120 on desktop between the two
+  kinds. They are permanent, not a migration leftover.
+- **Adding the intro to a block** touches the schema (`intro`), every
+  `on['blocks.x']` populate in `cms/src/utils/contentPopulate.ts` and in the
+  Strapi preview queries (`src/pages/page-preview.astro`,
+  `src/pages/preview/*.astro`) (without them the intro silently drops out of
+  the export or the preview), the serializer
+  (`serializeIntroProp`), the sync handler (`getIntroAttr`), the component,
+  and `SELF_SPACED_BLOCKS` in `src/utils/main/dynamicZoneSpacing.ts`, the
+  preview's copy of the marker. `selfSpacedBlocks.test.ts` fails when that
+  set and the components drift.
 
 ## Git
 

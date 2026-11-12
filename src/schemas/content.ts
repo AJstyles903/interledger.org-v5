@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { relatedArticlePathSlug } from './relatedArticlePathSlug'
 
 const heroCtaSchema = z.object({
   text: z.string(),
@@ -34,6 +35,7 @@ const draftSchema = z.boolean().optional().default(false)
 // src/data/ui.ts. Comms will provide an updated list later (INTORG-765); when it
 // lands, add the new values here and retire the legacy ones.
 const blogCategories = [
+  'Community',
   'Engineering',
   'Grantmaking',
   'Interledger Technology',
@@ -81,8 +83,13 @@ export const foundationBlogFrontmatterSchema = z.object({
   thumbnailImageAlt: z.string().nullable().optional(),
   articleBios: z.array(AuthorBioSchema).optional().default([]),
   categories: z.array(z.enum(blogCategories)).default([]),
-  // Exactly 3 slugs of related posts (required for all frontmatter; Strapi also enforces this for editors).
-  relatedArticles: z.array(bareSlugSchema).length(3),
+  // Exactly 3 related posts. The CMS requires `/blog/{slug}/` and rejects a
+  // bare slug, a URL, or another section (INTORG-1346). This reduces a
+  // `/blog/{slug}/` path, and a legacy bare slug still in a file, to the
+  // pathSlug the page matches. A bad file still parses.
+  relatedArticles: z
+    .array(z.string().transform(relatedArticlePathSlug))
+    .length(3),
   // Reserved for migrated v4 developer blog posts; lets them render without
   // a feature image or thumbnail. Hidden from Strapi editors.
   legacy: z.boolean().optional().default(false),
@@ -414,7 +421,18 @@ const podcastTitleCardSchema = z.object({
   })
 })
 
+// A block intro in frontmatter (ADR-009): the keys the CMS writes, each
+// optional; the CMS leaves the whole object out when it is empty.
+const blockIntroSchema = z
+  .object({
+    heading: z.string().optional(),
+    subheading: z.string().optional(),
+    description: z.string().optional()
+  })
+  .strict()
+
 const podcastTitleCardsSchema = z.object({
+  intro: blockIntroSchema.optional(),
   columns: z.enum(['Three', 'Two']),
   ariaLabel: z.string().min(1, 'ariaLabel is required'),
   cards: z.array(podcastTitleCardSchema).min(1)

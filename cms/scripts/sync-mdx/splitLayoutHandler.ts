@@ -5,10 +5,8 @@
  * - <SplitLayout intro={{…}} imagePosition="left|right"
  *     displayRatio="3:2|2:1|1:1|1:2"
  *     imageSrc="..."
- *     videoUrl="..." quote="..." quoteSource="..."
+ *     videoUrl="..." videoTitle="..." quote="..." quoteSource="..."
  *     buttons={[{ text, link, style?, external?, document? }]}>
- *   A legacy single CTA (ctaText="..." ctaLink="..." ctaStyle="..."
- *   ctaExternal={true} ctaDocument={true}) is read into `buttons`.
  *   children (markdown body for the content column)
  *   </SplitLayout>
  *
@@ -18,9 +16,9 @@
  * so alt text can be set per locale.
  */
 
-import type { CtaButton, ParsedBlock, SplitLayoutBlock } from './types.blocks'
+import type { ParsedBlock, SplitLayoutBlock } from './types.blocks'
 import { childrenToMarkdown } from './mdastSerialize'
-import { getStringAttr, getBooleanAttr, getIntroAttr } from './jsxExtract'
+import { getStringAttr, getIntroAttr } from './jsxExtract'
 import { getCtaButtonsAttr } from './ctaButtonsProp'
 import {
   registerComponentHandler,
@@ -78,40 +76,9 @@ async function handleSplitLayout(
     const imageSrc = getStringAttr(node, 'imageSrc')
     const imageAlt = getStringAttr(node, 'imageAlt')
     const videoUrl = getStringAttr(node, 'videoUrl')
+    const videoTitleAttr = getStringAttr(node, 'videoTitle')
     const quote = getStringAttr(node, 'quote')
     const quoteSource = getStringAttr(node, 'quoteSource')
-    const ctaText = getStringAttr(node, 'ctaText')
-    const ctaLink = getStringAttr(node, 'ctaLink')
-    const ctaStyle = getStringAttr(node, 'ctaStyle')
-    const ctaExternal = getBooleanAttr(node, 'ctaExternal')
-    const ctaDocument = getBooleanAttr(node, 'ctaDocument')
-
-    if (ctaExternal && ctaDocument) {
-      throw new MdxParserError({
-        code: ParserErrorCode.INVALID_PROP_VALUE,
-        message:
-          'SplitLayout cannot set both ctaExternal and ctaDocument. Pick one: external opens a new tab, document downloads a file.',
-        component: 'SplitLayout',
-        prop: 'ctaDocument',
-        line: node.position?.start.line,
-        column: node.position?.start.column
-      })
-    }
-
-    /** A legacy single CTA (ctaText, ctaLink, …) as a one-button group. */
-    function legacyCtaButtons(): CtaButton[] {
-      if (!ctaText || !ctaLink) return []
-      return [
-        {
-          text: ctaText.trim(),
-          link: ctaLink.trim(),
-          style: ctaStyle === 'secondary' ? 'secondary' : 'primary',
-          ...(ctaExternal ? { external: true } : {}),
-          ...(ctaDocument ? { document: true } : {})
-        }
-      ]
-    }
-
     const content =
       node.children.length > 0 ? childrenToMarkdown(node.children) : undefined
 
@@ -159,7 +126,7 @@ async function handleSplitLayout(
     const isQuoteLayout = layoutType.endsWith('-quote')
 
     const intro = getIntroAttr(node)
-    const buttons = getCtaButtonsAttr(node) ?? legacyCtaButtons()
+    const buttons = getCtaButtonsAttr(node) ?? []
     const block: SplitLayoutBlock = {
       __component: 'blocks.split-layout',
       ...(intro ? { intro } : {}),
@@ -175,6 +142,15 @@ async function handleSplitLayout(
       block.media = { image: imageId, alternativeText: imageAlt ?? null }
     }
     if (isVideoLayout && videoUrl) block.videoUrl = videoUrl
+    if (isVideoLayout) {
+      // imageAlt is the poster alt, and it is only stored with the image.
+      // A video with no poster would otherwise lose its player name and
+      // export as "Video". An explicit videoTitle wins; imageAlt fills in
+      // only when there is no poster to hang it on.
+      const videoTitle =
+        videoTitleAttr?.trim() || (!imageId ? imageAlt?.trim() : '')
+      if (videoTitle) block.videoTitle = videoTitle
+    }
     if (isTextLayout && content) block.content = content
     if (isQuoteLayout && quote) block.quote = quote
     if (isQuoteLayout && quoteSource) block.quoteSource = quoteSource

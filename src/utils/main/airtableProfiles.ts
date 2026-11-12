@@ -7,17 +7,20 @@ import type {
 } from '@/types/airtable'
 import {
   describeValue,
+  formatProblems,
+  isRecordId,
   isStringArray,
   nonBlankString,
-  readImageField
+  partitionRecordResults,
+  readImageField,
+  recordProblemsError
 } from './airtableFieldValues'
 
 // Record-shaping helpers for the grantee profile part of
-// scripts/import-airtable.ts. A profile with a required value missing, or a
-// value of the wrong shape, fails the whole sync and names the grantee. An
-// optional text or link that is not valid is only left out, with a warning:
-// the profile is still correct without it. Every grantee in the table is
-// public (PRO-371), so there is no publish filter.
+// scripts/import-airtable.ts. Profiles follow the grant report rules: a
+// profile with a required value missing, or a value of the wrong shape, fails
+// the whole sync and names the grantee. Every grantee in the table is public
+// (PRO-371), so there is no publish filter.
 
 export const GRANTEE_TYPES: readonly GranteeType[] = [
   'Organisation',
@@ -34,6 +37,7 @@ export const PROFILE_FIELDS = {
   description: { id: 'fldc2zDN8pnJX3dRR', name: 'Description' },
   country: { id: 'fldJkNUyrW5gXfPdG', name: 'Country' },
   website: { id: 'fldpTs62L6WHunwSR', name: 'Website' },
+  socialWeb: { id: 'fld4GGi7Od0gjsgfS', name: 'Social Web' },
   twitter: { id: 'fld3T10rcjuL8Dd98', name: 'X / Twitter' },
   linkedIn: { id: 'fldK19CFIhfzCeRpB', name: 'LinkedIn' },
   bluesky: { id: 'fldKo5jpMoHJ2bN66', name: 'Bluesky' },
@@ -51,7 +55,6 @@ type ProfileFieldKey = keyof typeof PROFILE_FIELDS
 // The slug becomes a URL segment, so only lowercase ASCII words joined by
 // single hyphens. Ayden noted that some slugs may still carry accents.
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
-const RECORD_ID_PATTERN = /^rec[A-Za-z0-9]{14}$/
 const URL_PROTOCOLS = new Set(['http:', 'https:'])
 
 function isHttpUrl(value: string): boolean {
@@ -79,28 +82,20 @@ export function splitThematicTags(value: unknown): string[] | undefined {
 }
 
 // Same placeholder approach as the report reader: a failed read records the
-// problem and returns a value that is never written. A skipped read records a
-// warning and returns null, which is written.
+// problem and returns a value that is never written.
 function createFieldReader(fields: Record<string, unknown>) {
   const problems: string[] = []
-  const warnings: string[] = []
-  const describe = (key: ProfileFieldKey, expected: string) => {
-    const { name, id } = PROFILE_FIELDS[key]
-    return `"${name}": expected ${expected}, got ${describeValue(fields[id])}`
-  }
   const fail = <T>(key: ProfileFieldKey, expected: string, placeholder: T) => {
-    problems.push(describe(key, expected))
+    const { name, id } = PROFILE_FIELDS[key]
+    problems.push(
+      `"${name}": expected ${expected}, got ${describeValue(fields[id])}`
+    )
     return placeholder
-  }
-  const skip = (key: ProfileFieldKey, expected: string): null => {
-    warnings.push(`${describe(key, expected)}, left out`)
-    return null
   }
   const raw = (key: ProfileFieldKey) => fields[PROFILE_FIELDS[key].id]
 
   return {
     problems,
-    warnings,
     text(key: ProfileFieldKey): string {
       return nonBlankString(raw(key)) ?? fail(key, 'text', '')
     },
@@ -109,7 +104,7 @@ function createFieldReader(fields: Record<string, unknown>) {
       if (value === undefined) return null
       return typeof value === 'string'
         ? (nonBlankString(value) ?? null)
-        : skip(key, 'text')
+        : fail(key, 'text', null)
     },
     slug(key: ProfileFieldKey): string {
       const value = raw(key)
@@ -126,17 +121,17 @@ function createFieldReader(fields: Record<string, unknown>) {
     optionalUrl(key: ProfileFieldKey): string | null {
       const value = raw(key)
       if (value === undefined) return null
-      return typeof value === 'string' && isHttpUrl(value.trim())
-        ? value.trim()
-        : skip(key, 'an http or https URL')
+      if (typeof value !== 'string') {
+        return fail(key, 'an http or https URL', null)
+      }
+      const url = nonBlankString(value)
+      if (url === undefined) return null
+      return isHttpUrl(url) ? url : fail(key, 'an http or https URL', null)
     },
     recordIds(key: ProfileFieldKey): string[] {
       const value = raw(key)
       if (value === undefined) return []
-      return Array.isArray(value) &&
-        value.every(
-          (id) => typeof id === 'string' && RECORD_ID_PATTERN.test(id)
-        )
+      return Array.isArray(value) && value.every(isRecordId)
         ? value
         : fail(key, 'linked record IDs', [])
     },
@@ -182,6 +177,7 @@ export function toGranteeProfile(
     description: read.optionalText('description'),
     country: read.optionalText('country'),
     website: read.optionalUrl('website'),
+    socialWeb: read.optionalUrl('socialWeb'),
     twitter: read.optionalUrl('twitter'),
     linkedIn: read.optionalUrl('linkedIn'),
     bluesky: read.optionalUrl('bluesky'),
@@ -193,14 +189,10 @@ export function toGranteeProfile(
   }
   const logoSource = read.logo('logo')
 
-  const label = `Grantee ${profileLabel(raw)}`
-  if (read.problems.length > 0) {
-    // The warnings go in too, so programs fix the record in one pass.
-    const lines = [...read.problems, ...read.warnings]
-    return new Error(`${label}:\n${lines.map((p) => `  - ${p}`).join('\n')}`)
-  }
-  const warnings = read.warnings.map((warning) => `${label}: ${warning}`)
-  return { content, logoSource, warnings }
+  if (read.problems.length === 0) return { content, logoSource }
+  return new Error(
+    formatProblems(`Grantee ${profileLabel(raw)}`, read.problems)
+  )
 }
 
 // Two grantees with one slug would build one page for both.
@@ -225,22 +217,12 @@ export function toGranteeProfiles(
       'No grantees in the Grantees table — refusing to write empty profiles'
     )
   }
-  const profiles: ParsedGranteeProfile[] = []
-  const problems: string[] = []
-  for (const result of records.map(toGranteeProfile)) {
-    if (result instanceof Error) problems.push(result.message)
-    else profiles.push(result)
-  }
+  const { values: profiles, problems } = partitionRecordResults(
+    records.map(toGranteeProfile)
+  )
   problems.push(...findDuplicateSlugs(profiles))
   if (problems.length > 0) {
-    // A failed sync logs nothing else, so the warnings of the grantees that
-    // passed go in the error too.
-    const warnings = profiles.flatMap((profile) => profile.warnings)
-    const warningLines =
-      warnings.length > 0 ? `\nAlso left out:\n${warnings.join('\n')}` : ''
-    return new Error(
-      `${problems.length} grantee profile problem(s):\n${problems.join('\n')}${warningLines}`
-    )
+    return recordProblemsError(problems, 'bad profile(s) or shared slug(s)')
   }
   return profiles.sort((a, b) => a.content.slug.localeCompare(b.content.slug))
 }

@@ -7,16 +7,20 @@ import type {
 } from '@/types/airtable'
 import {
   describeValue,
+  formatProblems,
+  isRecordId,
   isStringArray,
   nonBlankString,
-  readImageField
+  partitionRecordResults,
+  readImageField,
+  recordProblemsError
 } from './airtableFieldValues'
 
 // Record-shaping helpers for the grant report part of scripts/import-airtable.ts.
-// Unlike the grantee directory, a gap is never warned about and skipped: a
-// report with a required value missing, or with an image that breaks the rules
-// below, fails the whole sync. Programs fix the record, and the next run picks
-// it up. The site keeps the last good data in the meantime.
+// A report with a required value missing, a value of the wrong shape, or an
+// image that breaks the rules in airtableFieldValues.ts fails the whole sync.
+// Programs fix the record, and the next run picks it up. The site keeps the
+// last good data in the meantime.
 
 // Only reports with this status reach the site. The view filters on it too,
 // but the sync checks again, so a change to the view cannot publish a draft.
@@ -30,7 +34,7 @@ const REPORT_TYPES: readonly GrantReportType[] = [
 
 // The Published Reports columns the sync reads, by field ID so a rename in
 // Airtable changes nothing. Names are for error messages and match Airtable.
-// The three lookups come from Submitted Reports through Source Submission, so
+// The four lookups come from Submitted Reports through Source Submission, so
 // the sync never reads that table and its private fields.
 export const REPORT_FIELDS = {
   publishedDate: { id: 'fldoN3aDnVtZlXQ4A', name: 'Published Date' },
@@ -77,6 +81,10 @@ export const REPORT_FIELDS = {
     id: 'fld7cg0Ehni9NEVa8',
     name: 'Submitted Report Num'
   },
+  // A lookup of the submission's Projects link, so it holds the grant's
+  // record ID. A project name is not unique: one grantee can have two grants
+  // with the same name.
+  grantRecord: { id: 'fldahnD71g8colQsZ', name: 'Grant Record' },
   image1: { id: 'fldQY4Dses4064EI3', name: 'Public Image 1' },
   image2: { id: 'fld7WuZSUfppIE3Qs', name: 'Public Image 2' },
   image3: { id: 'fld5bJMgKQXnQ91A4', name: 'Public Image 3' },
@@ -126,8 +134,8 @@ function readSingleLookup(value: unknown): unknown {
 }
 
 // Reads the fields of one record. A reader that fails records the problem and
-// returns a placeholder, which is safe because toGrantReport discards the
-// report when there is any problem.
+// returns a placeholder, which is safe because toGrantReport returns an Error
+// instead of the report when there is any problem.
 function createFieldReader(fields: Record<string, unknown>) {
   const problems: string[] = []
   const fail = <T>(key: ReportFieldKey, expected: string, placeholder: T) => {
@@ -154,6 +162,12 @@ function createFieldReader(fields: Record<string, unknown>) {
       const value = nonBlankString(readSingleLookup(raw(key)))
       return value ?? fail(key, 'exactly one text value', '')
     },
+    lookupRecordId(key: ReportFieldKey): string {
+      const value = readSingleLookup(raw(key))
+      return isRecordId(value)
+        ? value
+        : fail(key, 'exactly one linked record', '')
+    },
     lookupNumber(key: ReportFieldKey): number {
       const value = readSingleLookup(raw(key))
       return typeof value === 'number' && Number.isInteger(value) && value > 0
@@ -168,7 +182,11 @@ function createFieldReader(fields: Record<string, unknown>) {
     },
     // An empty description is allowed: the image then shows with alt="".
     optionalText(key: ReportFieldKey): string {
-      return nonBlankString(raw(key)) ?? ''
+      const value = raw(key)
+      if (value === undefined) return ''
+      return typeof value === 'string'
+        ? (nonBlankString(value) ?? '')
+        : fail(key, 'text', '')
     },
     image(key: ReportFieldKey, alt: string): SyncedImageSource | undefined {
       const result = readImageField(raw(key), alt)
@@ -204,6 +222,7 @@ export function toGrantReport(raw: RawTableRecord): ParsedGrantReport | Error {
   const read = createFieldReader(raw.fields)
   const content: GrantReportContent = {
     id: raw.id,
+    grantId: read.lookupRecordId('grantRecord'),
     projectName: read.lookupText('projectName'),
     reportType: read.reportType('reportType'),
     reportNumber: read.lookupNumber('reportNumber'),
@@ -219,15 +238,16 @@ export function toGrantReport(raw: RawTableRecord): ParsedGrantReport | Error {
     outputTypes: read.options('outputTypes'),
     interledgerTechnologies: read.options('interledgerTechnologies')
   }
-  const imageSources = IMAGE_SLOTS.flatMap(
-    ({ image, description }) =>
-      read.image(image, read.optionalText(description)) ?? []
-  )
+  // A description is read only for a slot with an image: on its own it is
+  // never published, so it cannot fail the sync. It is read even when the
+  // image fails, so the record lists both problems in one run.
+  const imageSources = IMAGE_SLOTS.flatMap(({ image, description }) => {
+    if (raw.fields[REPORT_FIELDS[image].id] === undefined) return []
+    return read.image(image, read.optionalText(description)) ?? []
+  })
 
   if (read.problems.length === 0) return { content, imageSources }
-  return new Error(
-    `Report ${reportLabel(raw)}:\n${read.problems.map((p) => `  - ${p}`).join('\n')}`
-  )
+  return new Error(formatProblems(`Report ${reportLabel(raw)}`, read.problems))
 }
 
 // Sorted by project, then report number, so a change to the view's sort in
@@ -238,6 +258,7 @@ function compareReports(
 ): number {
   return (
     a.projectName.localeCompare(b.projectName, 'en') ||
+    a.grantId.localeCompare(b.grantId) ||
     a.reportNumber - b.reportNumber ||
     a.id.localeCompare(b.id)
   )
@@ -248,18 +269,13 @@ function compareReports(
 export function toGrantReports(
   records: RawTableRecord[]
 ): ParsedGrantReport[] | Error {
-  const reports: ParsedGrantReport[] = []
-  const errors: Error[] = []
-  for (const result of records.filter(isLiveReport).map(toGrantReport)) {
-    if (result instanceof Error) errors.push(result)
-    else reports.push(result)
+  const { values, problems } = partitionRecordResults(
+    records.filter(isLiveReport).map(toGrantReport)
+  )
+  if (problems.length > 0) {
+    return recordProblemsError(problems, 'report(s) cannot be published')
   }
-  if (errors.length > 0) {
-    return new Error(
-      `${errors.length} grant report(s) cannot be published:\n${errors.map((e) => e.message).join('\n')}`
-    )
-  }
-  return reports.sort(compareReports)
+  return values.sort(compareReports)
 }
 
 // The view decides what is public. A report field hidden there is a field

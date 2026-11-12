@@ -25,9 +25,11 @@ export {
   type SocialIconName
 } from './shared/url'
 export { tryCatchAsync } from './shared/tryCatch'
+export { collectResults } from './shared/collectResults'
 export { foldSearchText } from './shared/foldSearchText'
 export { formatDocumentTitle } from './shared/documentTitle'
 export { twMerge } from './shared/twMerge'
+export { contentLangAttr } from './shared/contentLang'
 export { getVisiblePages } from './shared/pagination'
 export {
   parseRedirectConfig,
@@ -100,7 +102,7 @@ export { buildMap } from './main/translationMap'
 export { translationMap } from './main/translationMapData'
 
 // Main site: Data fetching
-export { getNavigation } from './main/navigation'
+export { getNavigation, isDirectNavLink } from './main/navigation'
 export { fetchStrapi, type StrapiResponse } from './main/fetchStrapi'
 export { applyPreviewNoStore } from './main/cache'
 export { logPreviewFetchError } from './main/previewLog'
@@ -214,20 +216,23 @@ export {
   findRenamedFields,
   isRawTableRecord,
   listUnrenderedViewFields,
-  resolveProjectLeaders,
   selectPublishedGranteeFields,
   toGranteeRecord,
-  warnOnMissingProjectNames,
+  toGranteeRecords,
   type GranteeFieldName
 } from './main/airtableRecords'
 export {
   ALLOWED_IMAGE_TYPES,
   MAX_SOURCE_IMAGE_BYTES,
   describeValue,
+  formatProblems,
+  isRecordId,
   isRecordLike,
   isStringArray,
   nonBlankString,
-  readImageField
+  partitionRecordResults,
+  readImageField,
+  recordProblemsError
 } from './main/airtableFieldValues'
 export {
   LIVE_STATUS,
@@ -292,8 +297,6 @@ export {
   blockIntroLabel,
   type BlockIntroA11y,
   normalizeBlockIntro,
-  resolveBlockIntro,
-  splitTrailingHeading,
   type NormalizedBlockIntro
 } from './main/blockIntro'
 export {

@@ -3,7 +3,7 @@ import type { Schema, Struct } from '@strapi/strapi'
 export interface BlocksAgenda extends Struct.ComponentSchema {
   collectionName: 'components_blocks_agendas'
   info: {
-    description: 'A schedule with an optional heading and at least two agenda items'
+    description: 'A schedule with an optional intro, an optional day heading and at least two agenda items'
     displayName: 'Agenda'
     icon: 'calendar'
   }
@@ -15,6 +15,12 @@ export interface BlocksAgenda extends Struct.ComponentSchema {
           preset: 'defaultMarkdown'
         }
       > &
+      Schema.Attribute.SetPluginOptions<{
+        i18n: {
+          localized: true
+        }
+      }>
+    intro: Schema.Attribute.Component<'shared.block-intro', false> &
       Schema.Attribute.SetPluginOptions<{
         i18n: {
           localized: true
@@ -143,12 +149,6 @@ export interface BlocksCardGrid extends Struct.ComponentSchema {
       }>
     navigationCards: Schema.Attribute.Component<'blocks.navigation-card', true>
     resourceCards: Schema.Attribute.Component<'blocks.resource-card', true>
-    title: Schema.Attribute.String &
-      Schema.Attribute.SetPluginOptions<{
-        i18n: {
-          localized: true
-        }
-      }>
     titleCards: Schema.Attribute.Component<'blocks.title-card', true>
     variant: Schema.Attribute.String &
       Schema.Attribute.Required &
@@ -172,12 +172,6 @@ export interface BlocksCarousel extends Struct.ComponentSchema {
   attributes: {
     accessibilityLabel: Schema.Attribute.String &
       Schema.Attribute.Required &
-      Schema.Attribute.SetPluginOptions<{
-        i18n: {
-          localized: true
-        }
-      }>
-    heading: Schema.Attribute.String &
       Schema.Attribute.SetPluginOptions<{
         i18n: {
           localized: true
@@ -525,12 +519,6 @@ export interface BlocksEventCard extends Struct.ComponentSchema {
           localized: true
         }
       }>
-    title: Schema.Attribute.String &
-      Schema.Attribute.SetPluginOptions<{
-        i18n: {
-          localized: true
-        }
-      }>
     when: Schema.Attribute.Component<'blocks.event-card-when', false> &
       Schema.Attribute.Required &
       Schema.Attribute.SetPluginOptions<{
@@ -651,12 +639,6 @@ export interface BlocksFaq extends Struct.ComponentSchema {
     icon: 'question'
   }
   attributes: {
-    heading: Schema.Attribute.String &
-      Schema.Attribute.SetPluginOptions<{
-        i18n: {
-          localized: true
-        }
-      }>
     intro: Schema.Attribute.Component<'shared.block-intro', false> &
       Schema.Attribute.SetPluginOptions<{
         i18n: {
@@ -1110,12 +1092,6 @@ export interface BlocksNumberTiles extends Struct.ComponentSchema {
           localized: true
         }
       }>
-    title: Schema.Attribute.String &
-      Schema.Attribute.SetPluginOptions<{
-        i18n: {
-          localized: true
-        }
-      }>
   }
 }
 
@@ -1238,7 +1214,6 @@ export interface BlocksProfileGrid extends Struct.ComponentSchema {
   }
   attributes: {
     category: Schema.Attribute.String
-    heading: Schema.Attribute.String
     intro: Schema.Attribute.Component<'shared.block-intro', false> &
       Schema.Attribute.SetPluginOptions<{
         i18n: {
@@ -1401,12 +1376,6 @@ export interface BlocksSplitLayout extends Struct.ComponentSchema {
           localized: true
         }
       }>
-    cta: Schema.Attribute.Component<'shared.cta-link', false> &
-      Schema.Attribute.SetPluginOptions<{
-        i18n: {
-          localized: true
-        }
-      }>
     displayRatio: Schema.Attribute.Enumeration<['3:2', '2:1', '1:1', '1:2']> &
       Schema.Attribute.Required &
       Schema.Attribute.SetPluginOptions<{
@@ -1451,6 +1420,12 @@ export interface BlocksSplitLayout extends Struct.ComponentSchema {
         }
       }>
     quoteSource: Schema.Attribute.String &
+      Schema.Attribute.SetPluginOptions<{
+        i18n: {
+          localized: true
+        }
+      }>
+    videoTitle: Schema.Attribute.String &
       Schema.Attribute.SetPluginOptions<{
         i18n: {
           localized: true
@@ -1604,6 +1579,7 @@ export interface BlocksTitleCardGrid extends Struct.ComponentSchema {
     columns: Schema.Attribute.Enumeration<['Three', 'Two']> &
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<'Three'>
+    intro: Schema.Attribute.Component<'shared.block-intro', false>
     titleCards: Schema.Attribute.Component<'blocks.title-card', true> &
       Schema.Attribute.Required &
       Schema.Attribute.SetMinMax<
@@ -1797,6 +1773,7 @@ export interface SharedCategory extends Struct.ComponentSchema {
   attributes: {
     categoryValue: Schema.Attribute.Enumeration<
       [
+        'Community',
         'Engineering',
         'Grantmaking',
         'Interledger Technology',
@@ -2034,7 +2011,9 @@ export interface SharedRelatedArticle extends Struct.ComponentSchema {
     displayName: 'Related Article'
   }
   attributes: {
-    slug: Schema.Attribute.String & Schema.Attribute.Required
+    slug: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.CustomField<'plugin::related-article-slug.related-article-slug'>
   }
 }
 

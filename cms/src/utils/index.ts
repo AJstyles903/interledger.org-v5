@@ -96,6 +96,7 @@ export {
   heroFrontmatter,
   getPreservedFields,
   draftFrontmatter,
+  resolveDraft,
   MATTER_STRINGIFY_OPTIONS,
   yamlSingleQuoteScalar,
   yamlLiteralBlockScalar,
@@ -130,13 +131,16 @@ export {
   SerializerFieldError,
   type FieldError
 } from './contentValidation'
+export { relatedArticleSlugError } from './relatedArticleSlug'
 
 // Section-relative pathSlug uniqueness (cross-section content types)
 export {
   validateSectionScopedSlug,
   validateUniqueSlug,
+  validateSlugFreeInOtherCollection,
   type SectionScopedSlugFinder,
-  type SectionScopedSlugCheck
+  type SectionScopedSlugCheck,
+  type CrossCollectionSlugCheck
 } from './sectionScopedSlug'
 
 // Admin UID helpers for slugs stored as /slug/
@@ -231,11 +235,7 @@ export {
 } from './localeMdxUtils'
 
 // Block intro (serializers, sync handlers)
-export {
-  introWithLegacyHeading,
-  normalizeBlockIntroForMdx,
-  serializeIntroProp
-} from './blockIntro'
+export { normalizeBlockIntroForMdx, serializeIntroProp } from './blockIntro'
 
 // Report text types (serializers, sync handlers)
 export {
@@ -296,7 +296,9 @@ export {
   resolvePageFilepath,
   generateMDX,
   createPageLifecycle,
-  readLocaleFromUpdateEvent
+  readLocaleFromUpdateEvent,
+  resolveUpdateTarget,
+  type UpdateTarget
 } from './pageLifecycle'
 export {
   createBlogLifecycle,
@@ -410,6 +412,7 @@ export {
   slugVariants,
   toSlashedPath,
   toSlashedSlug,
+  isRelatedArticleSlug,
   mapOutsideMarkdownCode,
   slashInternalMarkdownLinks,
   stripUploadOrigin,
