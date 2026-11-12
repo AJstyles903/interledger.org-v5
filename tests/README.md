@@ -17,7 +17,7 @@ pnpm exec playwright install --with-deps
 
 ## Running tests
 
-The config starts (or reuses) the Astro dev server on **port 1103** (`astro dev --host 127.0.0.1`). The dev process is started with `CI=true` so Vite keeps running when stdin closes (otherwise a backgrounded `astro dev` exits).
+The config starts (or reuses) the Astro dev server on **port 1103** with `pnpm exec astro dev --host 127.0.0.1 --ignore-lock`, which keeps the dev process in the foreground when stdin closes (Playwright, or an AI coding agent that would otherwise background it).
 
 | Command                    | What it does                                     |
 | :------------------------- | :----------------------------------------------- |
@@ -33,7 +33,7 @@ pnpm exec playwright test tests/e2e/baseline.spec.ts
 pnpm exec playwright test -g "404"
 ```
 
-If a server is already running at `http://localhost:1103`, local runs reuse it (`reuseExistingServer`). In CI a fresh server is always started.
+If a server is already running at `http://127.0.0.1:1103`, local runs reuse it (`reuseExistingServer`). In CI a fresh server is always started.
 
 ## Folder structure
 
